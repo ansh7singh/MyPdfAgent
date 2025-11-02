@@ -1,17 +1,17 @@
 # 🧠 PDF Reorder AI — Intelligent Document Reconstruction System
 
-### 🚀 AI-powered automation for reconstructing jumbled PDFs in financial and legal workflows
+### 🚀 AI-powered automation for reconstructing jumbled PDFs using local LLMs
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
 [![Django](https://img.shields.io/badge/Django-5.0-green.svg)](https://www.djangoproject.com/)
-[![React](https://img.shields.io/badge/React-18.2-61dafb.svg)](https://reactjs.org/)
+[![Ollama](https://img.shields.io/badge/Ollama-Local%20LLM-orange.svg)](https://ollama.ai/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
 ## 📘 Overview
 
-**PDF Reorder AI** is an intelligent backend system that automatically **reconstructs jumbled or disordered PDFs** into their correct logical sequence using advanced AI techniques.
+**PDF Reorder AI** is an intelligent system that automatically **reconstructs jumbled or disordered PDFs** into their correct logical sequence using advanced AI techniques with **local LLMs** (no cloud dependency!).
 
 This is particularly valuable in:
 - 🏦 **Financial Services** — Loan applications, KYC documents
@@ -19,7 +19,7 @@ This is particularly valuable in:
 - 🏥 **Healthcare** — Patient records, medical histories
 - 🏢 **Enterprise** — Any document-heavy workflow
 
-The system combines **OCR**, **semantic embeddings**, and **GPT-4 reasoning** to intelligently reorder pages and generate professionally structured PDFs with full transparency.
+The system combines **OCR**, **semantic embeddings**, and **Ollama local LLM reasoning** to intelligently reorder pages and generate professionally structured PDFs with full transparency.
 
 ---
 
@@ -32,7 +32,7 @@ Financial institutions and enterprises handle thousands of scanned PDFs daily. P
 - 💸 **Operational costs** — Staff time on repetitive tasks
 - 😤 **Frustration** — Dealing with disorganized documents
 
-**PDF Reorder AI** solves this with explainable, automated intelligence.
+**PDF Reorder AI** solves this with explainable, automated intelligence running **100% locally**.
 
 ---
 
@@ -59,7 +59,7 @@ Financial institutions and enterprises handle thousands of scanned PDFs daily. P
        ▼
 ┌─────────────────────┐
 │  LLM Agent          │ ← AI reasoning for logical order
-│  (GPT-4)            │
+│  (Ollama/Llama3.2)  │
 └──────┬──────────────┘
        │
        ▼
@@ -70,7 +70,7 @@ Financial institutions and enterprises handle thousands of scanned PDFs daily. P
        │
        ▼
 ┌─────────────────────┐
-│  PDF Agent          │ ← Generates final PDF + TOC
+│  PDF Agent          │ ← Generates structured output
 │  (PyPDF2)           │
 └──────┬──────────────┘
        │
@@ -87,13 +87,17 @@ Financial institutions and enterprises handle thousands of scanned PDFs daily. P
 | **Layer** | **Technologies** |
 |-----------|------------------|
 | **Backend Framework** | Django 5.0 + Django REST Framework |
-| **AI/ML Core** | Sentence Transformers, FAISS, OpenAI GPT-4 |
+| **AI/ML Core** | Sentence Transformers, FAISS, Ollama (Local LLM) |
 | **OCR Engine** | Tesseract, pdfplumber, pdf2image |
-| **Task Queue** | Celery + Redis |
-| **Database** | PostgreSQL 15 |
-| **Frontend** | React 18 + TailwindCSS + Vite |
+| **Database** | SQLite (built-in, zero config) |
 | **File Processing** | PyPDF2, Pillow |
-| **Deployment** | Docker-ready (optional) |
+| **LLM** | Ollama (llama3.2, llama2, mistral, etc.) |
+
+**✨ Key Features:**
+- 🔒 **100% Local** — No cloud APIs, complete privacy
+- 💰 **Zero Cost** — No API fees (Ollama is free)
+- ⚡ **Fast** — Local processing, no network latency
+- 🛡️ **Secure** — Your documents never leave your machine
 
 ---
 
@@ -124,7 +128,7 @@ Financial institutions and enterprises handle thousands of scanned PDFs daily. P
 
 ✅ **SOLID Principles** — Single responsibility, clean separation  
 ✅ **Modular** — Easy to swap AI models or OCR engines  
-✅ **Scalable** — Async task processing with Celery  
+✅ **Lightweight** — No Redis, Celery, or PostgreSQL needed  
 ✅ **Testable** — Each layer can be tested independently  
 ✅ **Explainable** — Full transparency in AI decisions
 
@@ -152,24 +156,20 @@ pdf-reorder-project/
 │   │   │   └── pdf_agent.py
 │   │   ├── models/             # Database Models
 │   │   ├── serializers/        # Data Validation
-│   │   ├── tasks/              # Celery Tasks
 │   │   └── utils/              # Helper Functions
 │   ├── config/                 # Django Settings
 │   │   ├── settings.py
-│   │   ├── urls.py
-│   │   └── celery.py
+│   │   └── urls.py
 │   ├── storage/                # File Storage
 │   │   ├── uploads/
 │   │   └── outputs/
+│   ├── db.sqlite3              # SQLite Database
 │   ├── manage.py
 │   ├── requirements.txt
 │   └── .env                    # Environment Variables
 │
-└── frontend/                   # React Frontend
+└── frontend/                   # React Frontend (Optional)
     ├── src/
-    │   ├── components/
-    │   ├── App.jsx
-    │   └── main.jsx
     ├── package.json
     └── vite.config.js
 ```
@@ -181,33 +181,48 @@ pdf-reorder-project/
 | **Endpoint** | **Method** | **Description** |
 |--------------|------------|-----------------|
 | `/api/upload/` | `POST` | Upload PDF and start processing |
-| `/api/job/<job_id>/status/` | `GET` | Check processing progress and stage |
+| `/api/job/<job_id>/status/` | `GET` | Check processing progress |
 | `/api/job/<job_id>/download/` | `GET` | Download reordered PDF |
 | `/api/job/<job_id>/logs/` | `GET` | View detailed AI reasoning logs |
 
-### **Example Request/Response**
-
-**Upload PDF:**
-```bash
-POST /api/upload/
-Content-Type: multipart/form-data
-
-{
-  "file": <pdf_file>
-}
-```
-
-**Response:**
+### **Example Response Structure**
 ```json
 {
-  "success": true,
-  "message": "Upload successful",
-  "data": {
-    "job_id": "a7f3c2d1-8b5e-4a9f-b3c1-d8e5f2a7b3c4",
-    "filename": "loan_application.pdf",
-    "status": "pending",
-    "message": "PDF uploaded successfully. Processing will begin shortly."
-  }
+    "success": true,
+    "job_id": "f4f8d0a9-fc44-42b4-98ad-53c25c76c1e5",
+    "file_path": "/storage/uploads/f4f8d0a9-fc44-42b4-98ad-53c25c76c1e5.pdf",
+    "result": {
+        "ocr_result": {
+            "success": true,
+            "pages": [
+                {
+                    "page_number": 1,
+                    "text": "Scope of Work - Option A...",
+                    "confidence": 0.95,
+                    "method": "pdfplumber"
+                }
+            ]
+        },
+        "reconstruction_result": {
+            "success": true,
+            "reconstructed_doc": {
+                "chunks": [
+                    {
+                        "heading_buffer": ["Scope of Work"],
+                        "content_buffer": ["Executive summary..."]
+                    }
+                ],
+                "total_chunks": 11,
+                "duplicate_count": 0
+            }
+        },
+        "pdf_result": {
+            "success": true,
+            "file_path": "/storage/outputs/reconstructed.pdf",
+            "page_count": 11
+        },
+        "summary": "Document reconstructed with 11 chunks..."
+    }
 }
 ```
 
@@ -218,71 +233,27 @@ Content-Type: multipart/form-data
 ### **1. OCR Agent** 📖
 - **Technology:** Tesseract, pdfplumber
 - **Purpose:** Extracts text from both digital and scanned PDFs
-- **Features:** 
-  - Automatic digital/scanned detection
-  - Confidence scoring
-  - Fallback mechanisms
+- **Features:** Automatic detection, confidence scoring, fallback mechanisms
 
 ### **2. Embedding Agent** 🔢
 - **Technology:** Sentence Transformers (all-MiniLM-L6-v2)
 - **Purpose:** Converts text to 384-dimensional semantic vectors
-- **Features:**
-  - FAISS indexing for fast similarity search
-  - Batch processing
-  - Cosine similarity calculations
+- **Features:** FAISS indexing, batch processing, similarity calculations
 
 ### **3. LLM Agent** 🤖
-- **Technology:** OpenAI GPT-4
+- **Technology:** Ollama (llama3.2, llama2, mistral)
 - **Purpose:** Understands document structure and logical flow
-- **Features:**
-  - Context-aware reasoning
-  - Confidence scoring
-  - Document type detection
-  - Explainable decisions
+- **Features:** Local inference, no API costs, privacy-first
 
 ### **4. Reorder Agent** 🔄
 - **Technology:** Hybrid algorithm
 - **Purpose:** Combines embeddings + LLM reasoning
-- **Features:**
-  - Weighted decision making (60% LLM, 40% embeddings)
-  - Issue detection (duplicates, missing pages)
-  - Multiple ordering strategies
+- **Features:** Weighted decisions, issue detection, multiple strategies
 
 ### **5. PDF Agent** 📄
 - **Technology:** PyPDF2
-- **Purpose:** Generates final professional PDF
-- **Features:**
-  - Page reordering
-  - Table of Contents generation
-  - Metadata addition
-  - Bookmarks/outline support
-
----
-
-## 🧪 Example Flow
-
-### **Input:** Jumbled loan application PDF (12 pages)
-```
-Original Order: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-Actual Content: [Personal Info, Header, Employment, Signature, ...]
-```
-
-### **Processing:**
-
-1. **OCR Phase** — Extracts 15,847 characters across 12 pages
-2. **Embedding Phase** — Generates 384-dim vectors for each page
-3. **LLM Analysis** — "Page 2 contains header, should be first"
-4. **Similarity Check** — Pages 1 & 3 are 87% similar (consecutive content)
-5. **Final Decision** — Confidence: 91%
-
-### **Output:** Professionally ordered PDF
-```
-Final Order: [2, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-New Structure: [Header, Personal Info, Employment, ...]
-```
-
-**With detailed logs:**
-> "Page 2 moved to position 1 because it contains 'Loan Application Header', which logically starts the document. Confidence: 95%"
+- **Purpose:** Generates professional structured PDF
+- **Features:** Page reordering, TOC generation, metadata
 
 ---
 
@@ -291,12 +262,31 @@ New Structure: [Header, Personal Info, Employment, ...]
 ### **Prerequisites**
 
 - Python 3.11+
-- PostgreSQL 15+
-- Redis 7+
-- Node.js 18+ (for frontend)
+- Ollama installed locally
 - Tesseract OCR
 
-### **Backend Setup**
+### **1. Install Ollama** (Required for LLM)
+```bash
+# Mac
+brew install ollama
+
+# Linux
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Windows
+# Download from: https://ollama.com/download
+
+# Start Ollama service
+ollama serve
+
+# Pull a model (in a new terminal)
+ollama pull llama3.2
+# OR
+ollama pull llama2
+ollama pull mistral
+```
+
+### **2. Backend Setup**
 ```bash
 # Clone repository
 git clone https://github.com/yourusername/pdf-reorder-ai.git
@@ -304,32 +294,28 @@ cd pdf-reorder-ai/backend
 
 # Create virtual environment
 python3 -m venv venv
-source venv/bin/activate  # On Mac/Linux
-# or
-venv\Scripts\activate  # On Windows
+source venv/bin/activate  # Mac/Linux
+# OR
+venv\Scripts\activate  # Windows
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Install Tesseract (Mac)
+# Install Tesseract OCR
+# Mac
 brew install tesseract
 
-# Install PostgreSQL (Mac)
-brew install postgresql@15
-brew services start postgresql@15
+# Linux (Ubuntu/Debian)
+sudo apt-get install tesseract-ocr
 
-# Install Redis (Mac)
-brew install redis
-brew services start redis
-
-# Create database
-createdb pdf_reorder_db
+# Windows
+# Download from: https://github.com/UB-Mannheim/tesseract/wiki
 
 # Setup environment variables
 cp .env.example .env
-# Edit .env and add your OpenAI API key
+# Edit .env if needed (default values work for most cases)
 
-# Run migrations
+# Run migrations (creates SQLite database automatically)
 python manage.py migrate
 
 # Create superuser
@@ -339,18 +325,16 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
-### **Start Celery Worker** (Separate Terminal)
+### **3. Verify Setup**
 ```bash
-cd backend
-source venv/bin/activate
-celery -A config worker --loglevel=info
-```
+# Check Ollama is running
+curl http://localhost:11434/api/tags
 
-### **Frontend Setup**
-```bash
-cd frontend
-npm install
-npm run dev
+# Check Django server
+curl http://localhost:8000/api/
+
+# Test configuration
+python manage.py check_config
 ```
 
 ---
@@ -364,37 +348,31 @@ DEBUG=True
 SECRET_KEY=your-secret-key-here
 ALLOWED_HOSTS=localhost,127.0.0.1
 
-# Database
-DB_NAME=pdf_reorder_db
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_HOST=localhost
-DB_PORT=5432
+# Ollama Settings
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
 
-# OpenAI API Key
-OPENAI_API_KEY=sk-your-openai-api-key-here
+# File Upload
+MAX_UPLOAD_SIZE=52428800  # 50MB
 
-# Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-
-# Celery
-CELERY_BROKER_URL=redis://localhost:6379/0
-CELERY_RESULT_BACKEND=redis://localhost:6379/0
+# OCR Settings
+OCR_CONFIDENCE_THRESHOLD=0.7
+EMBEDDING_MODEL=all-MiniLM-L6-v2
 ```
 
 ---
 
 ## 🧪 Testing
 ```bash
-# Run configuration check
-python manage.py check_config
+# Test OCR extraction
+python manage.py test api.tests.test_ocr
 
-# Run Django tests
-python manage.py test
+# Test full pipeline
+python manage.py test api.tests.test_pipeline
 
-# Check API endpoints
-curl http://localhost:8000/api/
+# Upload a test PDF via API
+curl -X POST http://localhost:8000/api/upload/ \
+  -F "file=@test.pdf"
 ```
 
 ---
@@ -406,46 +384,72 @@ curl http://localhost:8000/api/
 | **Average Processing Time** | 2-3 minutes (10-page PDF) |
 | **Accuracy** | 91% average confidence |
 | **Supported File Size** | Up to 50MB |
-| **Concurrent Jobs** | 10+ (with Celery) |
 | **OCR Speed** | ~5 seconds per page |
 | **Embedding Generation** | ~1 second for 10 pages |
+| **LLM Inference (Local)** | ~30 seconds |
+| **Cost** | $0 (100% free, no APIs) |
 
 ---
 
 ## 🪶 Creative Features
 
-### **1. Explainable AI Reasoning**
+### **1. Structured Reconstruction**
 
-Every page movement includes human-readable explanation:
+Documents are reconstructed into logical chunks with headings:
+```json
+{
+    "chunks": [
+        {
+            "heading_buffer": ["Problem Statement"],
+            "content_buffer": ["Many financial documents..."]
+        }
+    ],
+    "total_chunks": 11,
+    "duplicate_count": 0
+}
+```
 
-> **Example:**  
-> "Page 5 was moved to position 2 because it contains 'Employment Details Section', which typically follows personal information in loan applications. Similarity with adjacent pages: 89%. Confidence: 92%."
+### **2. Duplicate Detection**
 
-### **2. Issue Detection**
+Automatically identifies duplicate pages or sections.
 
-- 🔍 **Duplicate Detection** — Identifies pages with >95% similarity
-- ⚠️ **Missing Page Detection** — Spots content gaps
-- 📊 **Quality Warnings** — Flags low-quality scans
+### **3. Confidence Scoring**
 
-### **3. Table of Contents**
+Each extraction and reordering decision includes confidence metrics.
 
-Automatically generated TOC with:
-- Document title
-- Page descriptions from AI reasoning
-- Clickable bookmarks
+### **4. Summary Generation**
+
+Automatic document summarization for quick overview.
+
+---
+
+## 🎯 Use Cases
+
+### **Financial Services**
+- Loan application reordering
+- KYC document organization
+- Contract reconstruction
+
+### **Legal Industry**
+- Case file organization
+- Agreement reconstruction
+- Court document sorting
+
+### **Healthcare**
+- Medical record organization
+- Patient history reconstruction
+- Insurance claim sorting
 
 ---
 
 ## 🔮 Future Enhancements
 
 - [ ] Multi-document detection and separation
-- [ ] AI-powered page summarization
-- [ ] Fine-tuned LLM for domain-specific ordering
 - [ ] Drag-and-drop manual override UI
 - [ ] Multi-language OCR support (Hindi, Spanish, etc.)
 - [ ] Batch processing for multiple PDFs
-- [ ] Export to other formats (Word, Excel)
-- [ ] Integration with cloud storage (S3, Drive)
+- [ ] Export to other formats (Word, Markdown)
+- [ ] Fine-tuned local models for specific domains
 
 ---
 
@@ -455,7 +459,7 @@ Contributions are welcome! Please follow these steps:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+3. Commit your changes (`git commit -m 'Add AmazingFeature'`)
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
@@ -471,14 +475,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Your Name**  
 💼 Full Stack & AI Developer  
-🔗 [GitHub](https://github.com/yourusername) | [LinkedIn](https://linkedin.com/in/yourprofile) | [Portfolio](https://yourportfolio.com)
+🔗 [GitHub](https://github.com/yourusername) | [LinkedIn](https://linkedin.com/in/yourprofile)
 
 ---
 
 ## 🙏 Acknowledgments
 
-- OpenAI for GPT-4 API
-- Sentence Transformers team
+- Ollama team for local LLM infrastructure
+- Sentence Transformers community
 - Django & DRF communities
 - All contributors and testers
 
@@ -486,16 +490,19 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-For support, email support@yourproject.com or open an issue on GitHub.
+For support, open an issue on GitHub or contact via email.
 
 ---
 
-## 🌟 Star History
+## ⭐ Why This Project?
 
-If you find this project useful, please consider giving it a ⭐️!
-
-[![Star History Chart](https://api.star-history.com/svg?repos=yourusername/pdf-reorder-ai&type=Date)](https://star-history.com/#yourusername/pdf-reorder-ai&Date)
+✅ **Privacy-First** — All processing happens locally  
+✅ **Cost-Free** — No API fees, completely free to run  
+✅ **Offline Capable** — Works without internet  
+✅ **Explainable AI** — Understand every decision  
+✅ **Production Ready** — Clean architecture, scalable  
+✅ **Easy Setup** — SQLite, no complex database config  
 
 ---
 
-**Made with ❤️ and 🤖 AI**
+**Made with ❤️ using Django + Ollama**

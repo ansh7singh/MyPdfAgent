@@ -1,0 +1,66 @@
+{
+  "id": "5fa4e32a-d47a-4791-99c7-05ad315685f1",
+  "status": "completed",
+  "created_at": "2025-11-02T15:20:59.276663",
+  "updated_at": "2025-11-02T15:20:59.411058",
+  "progress": 100,
+  "logs": [
+    {
+      "timestamp": "2025-11-02T15:20:59.279076",
+      "message": "File sample_document_with pii_scanned.pdf uploaded successfully",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:20:59.281537",
+      "message": "Creating text embeddings",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:20:59.409604",
+      "message": "Text embeddings created",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:20:59.409701",
+      "message": "Reordering document content",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:20:59.409802",
+      "message": "Document reordering completed",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:20:59.409872",
+      "message": "Generating PDF with reordered content",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:20:59.410777",
+      "message": "PDF generation completed",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:20:59.410865",
+      "message": "Generating document summary using LLM",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:20:59.410970",
+      "message": "Error generating summary: 'LLMAgent' object has no attribute 'summarize_text'",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:20:59.411059",
+      "message": "Document processing completed successfully",
+      "level": "info"
+    }
+  ],
+  "result": {
+    "file_name": "sample_document_with pii_scanned.pdf",
+    "pdf_path": null,
+    "sections_processed": 1,
+    "characters_processed": 0
+  },
+  "error": "Error generating summary: 'LLMAgent' object has no attribute 'summarize_text'"
+}

@@ -1,0 +1,61 @@
+{
+  "id": "918eecea-9fea-4736-b095-daaab6eba3bc",
+  "status": "completed",
+  "created_at": "2025-11-02T15:31:15.085742",
+  "updated_at": "2025-11-02T15:31:19.331133",
+  "progress": 100,
+  "logs": [
+    {
+      "timestamp": "2025-11-02T15:31:15.087938",
+      "message": "File ValueAi labs assessment.pdf uploaded successfully",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:31:15.346013",
+      "message": "Creating text embeddings",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:31:15.386965",
+      "message": "Text embeddings created",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:31:15.387070",
+      "message": "Reordering document content",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:31:15.387391",
+      "message": "Document reordering completed",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:31:15.387474",
+      "message": "Generating PDF with reordered content",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:31:15.388275",
+      "message": "Generating document summary using LLM",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:31:19.330099",
+      "message": "Document summary generation completed",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:31:19.331143",
+      "message": "Document processing completed successfully",
+      "level": "info"
+    }
+  ],
+  "result": {
+    "file_name": "ValueAi labs assessment.pdf",
+    "pdf_path": "generated_pdfs/ValueAi_labs_assessment_20251102_153115.pdf",
+    "sections_processed": 1,
+    "characters_processed": 1967
+  },
+  "error": null
+}

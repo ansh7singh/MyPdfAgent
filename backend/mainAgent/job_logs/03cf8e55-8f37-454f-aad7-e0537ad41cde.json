@@ -1,0 +1,21 @@
+{
+  "id": "03cf8e55-8f37-454f-aad7-e0537ad41cde",
+  "status": "failed",
+  "created_at": "2025-11-02T11:55:30.778060",
+  "updated_at": "2025-11-02T11:55:30.838575",
+  "progress": 10,
+  "logs": [
+    {
+      "timestamp": "2025-11-02T11:55:30.778750",
+      "message": "File Scope of Work -Option A Reconstruct the Jumbled PDF.pdf uploaded successfully",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T11:55:30.838579",
+      "message": "Processing failed: 'page'",
+      "level": "info"
+    }
+  ],
+  "result": null,
+  "error": "Error processing file: 'page'"
+}

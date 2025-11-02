@@ -1,0 +1,68 @@
+{
+  "id": "f20a02c2-fdd0-4aee-9e1c-a384e56df5a3",
+  "status": "failed",
+  "created_at": "2025-11-02T16:38:37.651279",
+  "updated_at": "2025-11-02T16:38:50.026281",
+  "progress": 95,
+  "logs": [
+    {
+      "timestamp": "2025-11-02T16:38:37.652199",
+      "message": "File ValueAi labs assessment.pdf uploaded successfully",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T16:38:37.652542",
+      "message": "Extracting text from PDF using OCR",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T16:38:37.883595",
+      "message": "Preparing document chunks for processing",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T16:38:37.884068",
+      "message": "Creating text embeddings",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T16:38:37.884226",
+      "message": "Starting document reconstruction with LLM",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T16:38:46.658725",
+      "message": "Document reconstruction completed",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T16:38:46.659494",
+      "message": "Generating final PDF from reconstruction",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T16:38:46.662625",
+      "message": "Final PDF generated successfully",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T16:38:46.663309",
+      "message": "Generating document summary from reconstruction",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T16:38:50.025247",
+      "message": "Document summary generation completed",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T16:38:50.026289",
+      "message": "Processing failed: 'list' object has no attribute 'split'",
+      "level": "info"
+    }
+  ],
+  "result": {
+    "summary_length": 89
+  },
+  "error": "Error processing file: 'list' object has no attribute 'split'"
+}

@@ -1,0 +1,61 @@
+{
+  "id": "19911082-d96d-468d-ac1a-f01701a0d306",
+  "status": "completed",
+  "created_at": "2025-11-02T15:29:54.447832",
+  "updated_at": "2025-11-02T15:29:57.171820",
+  "progress": 100,
+  "logs": [
+    {
+      "timestamp": "2025-11-02T15:29:54.450012",
+      "message": "File sample_document_with pii_scanned.pdf uploaded successfully",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:29:54.451626",
+      "message": "Creating text embeddings",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:29:54.526912",
+      "message": "Text embeddings created",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:29:54.527013",
+      "message": "Reordering document content",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:29:54.527130",
+      "message": "Document reordering completed",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:29:54.527203",
+      "message": "Generating PDF with reordered content",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:29:54.528703",
+      "message": "Generating document summary using LLM",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:29:57.171066",
+      "message": "Document summary generation completed",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:29:57.171828",
+      "message": "Document processing completed successfully",
+      "level": "info"
+    }
+  ],
+  "result": {
+    "file_name": "sample_document_with pii_scanned.pdf",
+    "pdf_path": "generated_pdfs/sample_document_with_pii_scanned_20251102_152954.pdf",
+    "sections_processed": 1,
+    "characters_processed": 0
+  },
+  "error": null
+}

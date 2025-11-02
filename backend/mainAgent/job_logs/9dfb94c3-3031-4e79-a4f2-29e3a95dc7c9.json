@@ -1,0 +1,38 @@
+{
+  "id": "9dfb94c3-3031-4e79-a4f2-29e3a95dc7c9",
+  "status": "failed",
+  "created_at": "2025-11-02T15:06:41.787301",
+  "updated_at": "2025-11-02T15:06:43.237986",
+  "progress": 70,
+  "logs": [
+    {
+      "timestamp": "2025-11-02T15:06:41.788640",
+      "message": "File Scope of Work -Option A Reconstruct the Jumbled PDF.pdf uploaded successfully",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:06:41.873789",
+      "message": "Creating text embeddings",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:06:43.237695",
+      "message": "Text embeddings created",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:06:43.237832",
+      "message": "Reordering document content",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:06:43.237987",
+      "message": "Processing failed: 'page'",
+      "level": "info"
+    }
+  ],
+  "result": {
+    "embeddings_created": 0
+  },
+  "error": "Error processing file: 'page'"
+}

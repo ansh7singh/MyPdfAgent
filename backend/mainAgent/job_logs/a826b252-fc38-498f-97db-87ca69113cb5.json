@@ -1,0 +1,38 @@
+{
+  "id": "a826b252-fc38-498f-97db-87ca69113cb5",
+  "status": "failed",
+  "created_at": "2025-11-02T15:13:13.921469",
+  "updated_at": "2025-11-02T15:13:14.358789",
+  "progress": 70,
+  "logs": [
+    {
+      "timestamp": "2025-11-02T15:13:13.924005",
+      "message": "File sample_document_with pii_scanned.pdf uploaded successfully",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:13:13.925320",
+      "message": "Creating text embeddings",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:13:14.358567",
+      "message": "Text embeddings created",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:13:14.358665",
+      "message": "Reordering document content",
+      "level": "info"
+    },
+    {
+      "timestamp": "2025-11-02T15:13:14.358790",
+      "message": "Processing failed: 'page'",
+      "level": "info"
+    }
+  ],
+  "result": {
+    "embeddings_created": 0
+  },
+  "error": "Error processing file: 'page'"
+}

@@ -1,6 +1,10 @@
 from django.urls import path, include
-from . import uploadUrls
+from myAgent.views.queryView import query_document
 
 urlpatterns = [
-    path('', include(uploadUrls)),
+    # Include the upload URLs
+    path('', include('myAgent.urls.uploadUrls')),
+    
+    # Add the query endpoint directly
+    path('query/', query_document, name='query_document'),
 ]

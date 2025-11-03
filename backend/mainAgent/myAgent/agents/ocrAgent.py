@@ -31,28 +31,7 @@ class OCRAgent:
     1. pdfplumber - Fast, for digital PDFs
     2. Tesseract OCR - Slower, for scanned images
     """
-    def extract_pages(self , pdf_path:Path)->dict:
-        """
-        Extract text from all pages in PDF
-        
-        Args:
-            pdf_path: Full path to PDF file
-        
-        Returns:
-            {
-                'success': True/False,
-                'pages': [
-                    {
-                        'page_number': 1,
-                        'text': 'extracted text...',
-                        'confidence': 0.95,
-                        'method': 'pdfplumber' or 'ocr'
-                    },
-                    ...
-                ],
-                'error': None or error message
-            }
-        """
+    def extract_pages(self, pdf_path: Path) -> dict:
         try:
             logger.info(f"Starting text extraction from: {pdf_path}")
             if not Path(pdf_path).exists():
@@ -62,43 +41,117 @@ class OCRAgent:
                     'pages': [],
                     'error': f"File not found: {pdf_path}"
                 }
+            
             pages_data = []
             with pdfplumber.open(pdf_path) as pdf:
                 total_pages = len(pdf.pages)
                 logger.info(f"PDF has {total_pages} pages")
 
-                for page_num,page in enumerate(pdf.pages,start=1):
-                    text = page.extract_text()
-                    if text:
-                        pages_data.append({
-                            'page_number': page_num,
-                            'text': text.strip(),
-                            'confidence': 0.95,  # High confidence for digital text
-                            'method': 'pdfplumber'
-                        })
-                        logger.debug(f"Page {page_num}: Extracted {len(text)} chars (pdfplumber)")
-                    else:
-                        logger.info(f"Page {page_num}: No text found (pdfplumber)")
+                for page_num in range(1, total_pages + 1):
+                    try:
+                        page = pdf.pages[page_num - 1]
+                        
+                        # Check if page is empty
+                        if self._is_page_empty(page):
+                            pages_data.append({
+                                'page_number': page_num,
+                                'text': '',
+                                'confidence': 1.0,
+                                'method': 'empty',
+                                'is_empty': True
+                            })
+                            logger.info(f"Page {page_num}: Detected empty page")
+                            continue
+                            
+                        # Try pdfplumber first
+                        text = page.extract_text()
+                        
+                        if text and len(text.strip()) > 0:
+                            pages_data.append({
+                                'page_number': page_num,
+                                'text': text.strip(),
+                                'confidence': 0.95,
+                                'method': 'pdfplumber',
+                                'is_empty': False
+                            })
+                        else:
+                            # Fall back to OCR
+                            ocr_result = self.extract_with_ocr(pdf_path, page_num)
+                            if ocr_result['success'] and ocr_result['page']['text'].strip():
+                                ocr_result['page']['is_empty'] = False
+                                pages_data.append(ocr_result['page'])
+                            else:
+                                pages_data.append({
+                                    'page_number': page_num,
+                                    'text': '',
+                                    'confidence': 0.0,
+                                    'method': 'failed',
+                                    'is_empty': True,
+                                    'error': 'No text could be extracted'
+                                })
+                                
+                    except Exception as e:
+                        logger.error(f"Error processing page {page_num}: {str(e)}")
                         pages_data.append({
                             'page_number': page_num,
                             'text': '',
                             'confidence': 0.0,
-                            'method': 'pdfplumber'
+                            'method': 'error',
+                            'is_empty': True,
+                            'error': str(e)
                         })
-                logger.info(f"Successfully extracted text from {len(pages_data)} pages")
-            
-            return {
-                'success': True,
-                'pages': pages_data,
-                'error': None
-            }
+                
+                # Check if we have any content at all
+                if not any(not page.get('is_empty', True) for page in pages_data):
+                    return {
+                        'success': False,
+                        'pages': pages_data,
+                        'error': 'Document appears to be empty or could not be processed'
+                    }
+                
+                return {
+                    'success': True,
+                    'pages': pages_data,
+                    'error': None
+                }
+                
         except Exception as e:
-            logger.error(f"Error extracting text from {pdf_path}: {str(e)}")
+            logger.error(f"Error extracting text from {pdf_path}: {str(e)}", exc_info=True)
             return {
                 'success': False,
                 'pages': [],
                 'error': str(e)
             }
+
+    def _is_page_empty(self, page) -> bool:
+        """
+        Check if a PDF page is empty or contains only whitespace/empty graphics.
+        
+        Args:
+            page: pdfplumber page object
+            
+        Returns:
+            bool: True if page is considered empty
+        """
+        try:
+            # Check for text
+            text = page.extract_text()
+            if text and text.strip():
+                return False
+                
+            # Check for non-white graphics
+            if page.images:
+                return False
+                
+            # Check for vector graphics
+            if page.curves or page.lines or page.rects or page.rect_edges:
+                return False
+                
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Error checking if page is empty: {str(e)}")
+            return False
     def extract_from_single_page(self , pdf_path:Path , page_num:int)->dict:
         """
         Extract text from single page in PDF

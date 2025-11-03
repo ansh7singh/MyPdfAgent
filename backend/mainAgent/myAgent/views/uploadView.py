@@ -1,7 +1,9 @@
 import logging
+from pathlib import Path
 from rest_framework import views
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
+from django.http import HttpResponse, FileResponse
 
 from rest_framework.decorators import api_view
 from rest_framework import status
@@ -20,11 +22,7 @@ log = logging.getLogger(__name__)
 @api_view(['POST'])
 @csrf_exempt
 def uploadFileview(request):
-    """
-    Handle file upload and processing
-    """
     try:
-        # Check if file is in the request
         if 'file' not in request.FILES:
             return Response({
                 'success': False,
@@ -33,74 +31,86 @@ def uploadFileview(request):
         
         uploaded_file = request.FILES['file']
         srv = UploadService()
-        result = srv.upload_file(uploaded_file)  # Pass the file object directly
+        result = srv.upload_file(uploaded_file)
+        
+        if result.get('success'):
+            # Add empty page information to the response
+            pages = result.get('result', {}).get('ocr_result', {}).get('pages', [])
+            empty_pages = [p['page_number'] for p in pages if p.get('is_empty', False)]
+            if empty_pages:
+                result['empty_pages'] = empty_pages
+                result['warning'] = f'Document contains {len(empty_pages)} empty page(s)'
+        
         return Response(result)
         
     except Exception as e:
-        log.error(f"Error in uploadFileview: {str(e)}")
+        log.error(f"Error in uploadFileview: {str(e)}", exc_info=True)
         return Response({
             'success': False,
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-@api_view(['POST'])
-@csrf_exempt
-def queryDocumentsView(request):
-    """
-    Handle document queries using LLM
-    Expected JSON: {"question": "Your question here"}
-    """
-    try:
-        data = json.loads(request.body)
-        question = data.get('question', '').strip()
-        
-        if not question:
-            return Response({
-                'response': 'error',
-                'error_msg': 'Question is required',
-                'error_code': 400,
-                'error_dtl': ''
-            }, status=status.HTTP_400_BAD_REQUEST)
-            
-        srv = uploadSrv()
-        result = srv.query_documents(question)
-        return Response(result)
-        
-    except json.JSONDecodeError:
-        return Response({
-            'response': 'error',
-            'error_msg': 'Invalid JSON format',
-            'error_code': 400,
-            'error_dtl': 'The request body must be a valid JSON object with a "question" field.'
-        }, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        log.error(f"Error in queryDocumentsView: {str(e)}")
-        return Response({
-            'response': 'error',
-            'error_msg': 'An error occurred while processing your request',
-            'error_code': 500,
-            'error_dtl': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
 @csrf_exempt
 def download_pdf_view(request, filename):
     """
     Download a generated PDF file
+    
+    Args:
+        request: Django request object
+        filename: Name of the file to download (must end with .pdf)
+        
+    Returns:
+        FileResponse with the PDF or error response
     """
     try:
-        # Get the path to the generated PDF
-        pdf_path = os.path.join(settings.MEDIA_ROOT, 'generated_pdfs', filename)
+        # Clean and validate filename
+        filename = filename.strip()
+        if not filename.lower().endswith('.pdf'):
+            raise ValueError("Invalid file type. Only PDF files are supported.")
+            
+        # Ensure we're not trying to access files outside the processed directory
+        if '..' in filename or filename.startswith('/'):
+            raise ValueError("Invalid filename")
+            
+        # Build the full path
+        pdf_path = Path(settings.MEDIA_ROOT) / 'processed' / filename
+        pdf_path = pdf_path.resolve()  # Get absolute path
         
-        # Check if file exists
-        if not os.path.exists(pdf_path):
-            raise Http404("The requested PDF does not exist")
+        # Double-check we're still in the allowed directory
+        processed_dir = Path(settings.MEDIA_ROOT) / 'processed'
+        if not pdf_path.is_relative_to(processed_dir):
+            raise ValueError("Invalid file path")
+            
+        log.info(f"📂 Attempting to serve PDF: {pdf_path}")
         
-        # Open the file and create a response
-        response = FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
+        # Check if file exists and is a file
+        if not pdf_path.is_file():
+            log.error(f"PDF not found: {pdf_path}")
+            raise Http404(f"The requested PDF does not exist: {filename}")
+
+        # Use FileResponse to stream the file
+        response = FileResponse(
+            open(pdf_path, 'rb'),
+            content_type='application/pdf',
+            as_attachment=True
+        )
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        return response
+        response['Content-Length'] = os.path.getsize(pdf_path)
         
+        log.info(f"✅ Successfully served PDF: {filename} ({os.path.getsize(pdf_path)} bytes)")
+        return response
+
+    except Http404 as e:
+        log.error(str(e))
+        return Response({
+            'response': 'error',
+            'error_msg': 'File not found',
+            'error_code': 404,
+            'error_dtl': str(e)
+        }, status=status.HTTP_404_NOT_FOUND)
+
     except Exception as e:
         log.error(f"Error downloading PDF {filename}: {str(e)}")
         return Response({

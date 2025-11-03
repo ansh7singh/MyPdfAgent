@@ -1,7 +1,6 @@
 from django.urls import path
 from myAgent.views.uploadView import (
     uploadFileview, 
-    queryDocumentsView, 
     download_pdf_view, 
     job_status_view, 
     job_logs_view
@@ -11,7 +10,6 @@ from myAgent.views.uploadView import (
 urlpatterns = [
     # File processing endpoints
     path('upload/', uploadFileview, name='uploadFile'),
-    path('query', queryDocumentsView, name='queryDocuments'),
     path('download/<str:filename>', download_pdf_view, name='downloadPdf'),
     
     # Job tracking endpoints

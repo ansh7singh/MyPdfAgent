@@ -13,6 +13,15 @@ class DocumentChunk:
         self.content_buffer = content_buffer
         self.source_file = source_file
         self.metadata = metadata or {}
+    
+    def to_dict(self):
+        """Convert the DocumentChunk to a dictionary for JSON serialization."""
+        return {
+            'chunk_id': self.chunk_id,
+            'content_buffer': self.content_buffer,
+            'source_file': self.source_file,
+            'metadata': self.metadata
+        }
 
 
 class ReconstructionAgent:

@@ -89,8 +89,18 @@ function App() {
         throw new Error(res.data?.error || res.data?.message || "Upload failed");
       }
     } catch (err) {
-      console.error("Upload error:", err.response?.data || err.message);
-      const errorMessage = err.response?.data?.error || err.response?.data?.detail || err.message || "Unknown error occurred";
+      console.error("Upload error:", err);
+      
+      // Provide more helpful error messages
+      let errorMessage = "Unknown error occurred";
+      if (err.code === 'ERR_NETWORK' || err.message.includes('Network Error')) {
+        errorMessage = "Cannot connect to backend server. Please ensure:\n1. Backend server is running on http://127.0.0.1:8000\n2. No firewall is blocking the connection\n3. The server is accessible";
+      } else if (err.response) {
+        errorMessage = err.response.data?.error || err.response.data?.detail || `Server error: ${err.response.status}`;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
       setLogs((prev) => [
         ...prev,
         {
@@ -98,17 +108,18 @@ function App() {
           level: "error",
           timestamp: new Date(),
         },
+        {
+          message: `🔍 Debug: ${err.code || 'No error code'} - ${err.message || 'No message'}`,
+          level: "error",
+          timestamp: new Date(),
+        },
       ]);
-      // Stay on processing page to show the error, don't redirect immediately
-      // User can manually go back or we show error state
+      
+      // Stay on processing page to show the error
       setJobResult({
         error: errorMessage,
         success: false
       });
-      // Give user time to see the error before potentially redirecting
-      setTimeout(() => {
-        // Only redirect if user wants to try again
-      }, 5000);
     }
   };
 

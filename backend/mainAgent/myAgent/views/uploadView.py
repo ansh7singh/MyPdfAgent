@@ -25,6 +25,7 @@ def uploadFileview(request):
     try:
         if 'file' not in request.FILES:
             return Response({
+                'status': 'error',
                 'success': False,
                 'error': 'No file provided in the request'
             }, status=status.HTTP_400_BAD_REQUEST)
@@ -35,19 +36,57 @@ def uploadFileview(request):
         
         if result.get('success'):
             # Add empty page information to the response
-            pages = result.get('result', {}).get('ocr_result', {}).get('pages', [])
+            processing_result = result.get('result', {})
+            pages = processing_result.get('ocr_result', {}).get('pages', [])
             empty_pages = [p['page_number'] for p in pages if p.get('is_empty', False)]
             if empty_pages:
                 result['empty_pages'] = empty_pages
                 result['warning'] = f'Document contains {len(empty_pages)} empty page(s)'
+            
+            # Add download URL for the reordered PDF
+            reordered_filename = processing_result.get('reordered_pdf_filename')
+            if reordered_filename:
+                # Use full URL with host for frontend
+                result['download_url'] = f'http://127.0.0.1:8000/agent/download/{reordered_filename}'
+                processing_result['download_url'] = result['download_url']
+            
+            # Return with status field for frontend compatibility
+            return Response({
+                'status': 'success',
+                'success': True,
+                'job_id': result.get('job_id'),
+                'file_path': result.get('file_path'),
+                'result': processing_result,
+                'empty_pages': result.get('empty_pages', []),
+                'warning': result.get('warning'),
+                'download_url': result.get('download_url')
+            })
         
-        return Response(result)
+        return Response({
+            'status': 'error',
+            'success': False,
+            'error': result.get('error', 'Unknown error')
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
     except Exception as e:
-        log.error(f"Error in uploadFileview: {str(e)}", exc_info=True)
+        import traceback
+        error_traceback = traceback.format_exc()
+        log.error(f"Error in uploadFileview: {str(e)}\n{error_traceback}", exc_info=True)
+        
+        # Provide user-friendly error message
+        error_message = str(e)
+        if "PageOrderingAgent" in error_message or "LLM" in error_message or "Ollama" in error_message:
+            error_message = "AI processing failed. Please ensure Ollama is running and llama3 model is available. Error: " + str(e)
+        elif "OCR" in error_message or "Tesseract" in error_message:
+            error_message = "Text extraction failed. Please ensure Tesseract OCR is installed. Error: " + str(e)
+        elif "PDF" in error_message or "PyPDF" in error_message:
+            error_message = "PDF processing failed. The file may be corrupted or in an unsupported format. Error: " + str(e)
+        
         return Response({
+            'status': 'error',
             'success': False,
-            'error': str(e)
+            'error': error_message,
+            'error_type': type(e).__name__
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

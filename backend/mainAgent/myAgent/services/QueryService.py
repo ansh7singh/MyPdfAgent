@@ -43,22 +43,51 @@ class QueryService:
             # Load the processed document chunks
             processed_dir = Path(settings.MEDIA_ROOT) / "processed"
             chunks_path = processed_dir / f"{job_id}_chunks.json"
+            metadata_path = processed_dir / f"{job_id}_metadata.json"
             
             # Try to load chunks from chunks.json file
             if not chunks_path.exists():
-                logger.warning(f"Chunks file not found at {chunks_path}, checking for alternative formats")
-                return {
-                    "success": False,
-                    "error": f"Document not found or not processed yet. Expected file: {chunks_path}",
-                    "debug": {
-                        "path": str(chunks_path),
-                        "exists": chunks_path.exists(),
-                        "files_in_processed_dir": [str(f.name) for f in processed_dir.glob('*')] if processed_dir.exists() else "Directory not found"
+                logger.warning(f"Chunks file not found at {chunks_path}, trying metadata file")
+                # Try to load from metadata file if chunks.json doesn't exist
+                if metadata_path.exists():
+                    with open(metadata_path, 'r', encoding='utf-8') as f:
+                        metadata = json.load(f)
+                        # Extract pages from metadata
+                        pages = metadata.get('pages', [])
+                        if pages:
+                            # Convert pages to chunks format
+                            raw_chunks = [
+                                {
+                                    'heading_buffer': [f"Page {p.get('page_number', i+1)}"],
+                                    'content_buffer': [p.get('text', '')],
+                                    'metadata': {
+                                        'page_number': p.get('page_number', i+1),
+                                        'confidence': p.get('confidence', 0.5)
+                                    }
+                                }
+                                for i, p in enumerate(pages)
+                            ]
+                        else:
+                            return {
+                                "success": False,
+                                "error": f"Document metadata found but no pages available. Please reprocess the document."
+                            }
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Document not found or not processed yet. Expected files: {chunks_path} or {metadata_path}",
+                        "debug": {
+                            "chunks_path": str(chunks_path),
+                            "metadata_path": str(metadata_path),
+                            "chunks_exists": chunks_path.exists(),
+                            "metadata_exists": metadata_path.exists(),
+                            "files_in_processed_dir": [str(f.name) for f in processed_dir.glob('*')] if processed_dir.exists() else "Directory not found"
+                        }
                     }
-                }
-            
-            with open(chunks_path, 'r', encoding='utf-8') as f:
-                raw_chunks = json.load(f)
+            else:
+                # Load from chunks.json file
+                with open(chunks_path, 'r', encoding='utf-8') as f:
+                    raw_chunks = json.load(f)
             
             # Convert chunks to the format expected by QueryAgent
             # The chunks.json might have different formats, so we normalize them

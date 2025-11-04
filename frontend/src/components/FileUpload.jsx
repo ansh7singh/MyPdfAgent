@@ -2,7 +2,7 @@
 import React, { useCallback } from 'react';
 import { Upload, X, FileText } from 'lucide-react';
 
-const FileUpload = ({ onFileUpload }) => {
+const FileUpload = ({ onUpload }) => {
   const [selectedFile, setSelectedFile] = React.useState(null);
   const [error, setError] = React.useState('');
 
@@ -19,7 +19,7 @@ const FileUpload = ({ onFileUpload }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (selectedFile) {
-      onFileUpload(selectedFile);
+      onUpload(selectedFile);
     }
   };
 

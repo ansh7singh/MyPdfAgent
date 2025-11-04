@@ -38,34 +38,77 @@ function App() {
       if (res.data && res.data.status === "success") {
         setLogs((prev) => [
           ...prev,
-          { message: "File uploaded successfully!", timestamp: new Date() },
-          { message: "Processing document...", timestamp: new Date() },
+          { message: "✅ File uploaded successfully!", timestamp: new Date() },
+          { message: "🔍 Step 1: Extracting text from PDF pages...", timestamp: new Date() },
         ]);
 
+        // Simulate processing steps if result is available immediately
         if (res.data.result) {
-          setJobResult({
-            ...res.data.result,
-            original_filename: file.name,
-            created_at: new Date().toISOString(),
-          });
-          setStage("results");
+          const result = res.data.result;
+          
+          // Add processing step logs
+          setTimeout(() => {
+            setLogs((prev) => [
+              ...prev,
+              { message: "✅ Text extracted from all pages", timestamp: new Date() },
+              { message: "🧠 Step 2: Determining correct page order using AI...", timestamp: new Date() },
+            ]);
+          }, 500);
+
+          setTimeout(() => {
+            setLogs((prev) => [
+              ...prev,
+              { message: "✅ Page order determined", timestamp: new Date() },
+              { message: "📄 Step 3: Physically reordering PDF pages...", timestamp: new Date() },
+            ]);
+          }, 1500);
+
+          setTimeout(() => {
+            setLogs((prev) => [
+              ...prev,
+              { message: "✅ PDF pages reordered successfully", timestamp: new Date() },
+              { message: "💾 Saving metadata...", timestamp: new Date() },
+            ]);
+          }, 2500);
+
+          setTimeout(() => {
+            setJobResult({
+              ...result,
+              job_id: res.data.job_id,
+              original_filename: file.name,
+              created_at: new Date().toISOString(),
+              download_url: res.data.download_url || result?.download_url || result?.pdf_result?.file_path,
+              reordered_pdf_filename: result?.reordered_pdf_filename || result?.pdf_result?.file_path?.split('/').pop() || result?.pdf_result?.file_path?.split('\\').pop(),
+            });
+            setStage("results");
+          }, 3000);
         } else {
           await pollForResults(res.data.job_id || res.data.task_id);
         }
       } else {
-        throw new Error(res.data?.message || "Upload failed");
+        throw new Error(res.data?.error || res.data?.message || "Upload failed");
       }
     } catch (err) {
       console.error("Upload error:", err.response?.data || err.message);
+      const errorMessage = err.response?.data?.error || err.response?.data?.detail || err.message || "Unknown error occurred";
       setLogs((prev) => [
         ...prev,
         {
-          message: `Error: ${err.response?.data?.detail || err.message}`,
+          message: `❌ Error: ${errorMessage}`,
           level: "error",
           timestamp: new Date(),
         },
       ]);
-      setStage("upload");
+      // Stay on processing page to show the error, don't redirect immediately
+      // User can manually go back or we show error state
+      setJobResult({
+        error: errorMessage,
+        success: false
+      });
+      // Give user time to see the error before potentially redirecting
+      setTimeout(() => {
+        // Only redirect if user wants to try again
+      }, 5000);
     }
   };
 
@@ -117,12 +160,34 @@ function App() {
             setLogs([]);
             setJobResult(null);
           }}
-          onDownload={() =>
-            window.open(
-              jobResult?.download_url || "http://127.0.0.1:8000/agent/download",
-              "_blank"
-            )
-          }
+          onDownload={() => {
+            // Ensure we always use the full backend URL
+            let downloadUrl = jobResult?.download_url;
+            
+            // If no download_url, construct from filename
+            if (!downloadUrl) {
+              const filename = jobResult?.reordered_pdf_filename || 
+                               jobResult?.pdf_result?.file_path?.split('/').pop() ||
+                               jobResult?.pdf_result?.file_path?.split('\\').pop();
+              if (filename) {
+                downloadUrl = `http://127.0.0.1:8000/agent/download/${filename}`;
+              }
+            }
+            
+            // If download_url is relative, make it absolute
+            if (downloadUrl && !downloadUrl.startsWith('http')) {
+              downloadUrl = `http://127.0.0.1:8000${downloadUrl.startsWith('/') ? '' : '/'}${downloadUrl}`;
+            }
+            
+            if (!downloadUrl) {
+              console.error('No download URL available');
+              alert('Download URL not available. Please check the server response.');
+              return;
+            }
+            
+            console.log('Downloading PDF from:', downloadUrl);
+            window.open(downloadUrl, "_blank");
+          }}
         />
       )}
     </div>

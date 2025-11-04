@@ -4,12 +4,11 @@ import uuid
 from pathlib import Path
 from typing import Dict, List, Any
 from django.conf import settings
-import PyPDF2
-from io import BytesIO
 
 from ..agents.ocrAgent import OCRAgent
 from ..agents.pdfAgent import PDFAgent
-from ..agents.reconstructionAgent import ReconstructionAgent, DocumentChunk
+from ..agents.pageOrderingAgent import PageOrderingAgent
+# Note: ReconstructionAgent removed - not needed for page reordering pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,8 @@ class UploadService:
         try:
             self.ocr_agent = OCRAgent()
             self.pdf_agent = PDFAgent()
-            self.reconstruction_agent = ReconstructionAgent()  # Uses default llama3 model
+            self.page_ordering_agent = PageOrderingAgent()  # For determining correct page order
+            # ReconstructionAgent removed - not needed for page reordering pipeline
 
             self.upload_dir = Path(settings.MEDIA_ROOT) / "uploads"
             self.output_dir = Path(settings.MEDIA_ROOT) / "processed"
@@ -31,34 +31,6 @@ class UploadService:
         except Exception as e:
             logger.error(f"Failed to initialize UploadService: {str(e)}", exc_info=True)
             raise
-    def _extract_text_from_pdf(self, file_path):
-        """Extract text from a PDF file."""
-        text = ""
-        try:
-            with open(file_path, 'rb') as file:
-                reader = PyPDF2.PdfReader(file)
-                for page in reader.pages:
-                    text += page.extract_text() + "\n"
-        except Exception as e:
-            logger.error(f"Error extracting text from PDF: {str(e)}")
-            raise
-        return text
-    def _chunk_text(self, text, chunk_size=1000, overlap=200):
-        """Split text into overlapping chunks."""
-        chunks = []
-        start = 0
-        while start < len(text):
-            end = start + chunk_size
-            chunk = text[start:end].strip()
-            if chunk:  # Only add non-empty chunks
-                chunks.append({
-                    "text": chunk,
-                    "start": start,
-                    "end": end
-                })
-            start = end - overlap  # Overlap chunks
-        return chunks
-
     def upload_file(self, uploaded_file, job_id: str = None) -> Dict[str, Any]:
         """Main entry point for upload and processing."""
         job_id = job_id or str(uuid.uuid4())
@@ -94,9 +66,19 @@ class UploadService:
 
     # ----------------------------------------------------------------
     def _process_file(self, file_path: Path, job_id: str) -> Dict[str, Any]:
+        """
+        Process a jumbled PDF file through the complete reconstruction pipeline.
+        
+        Pipeline Steps:
+        1. OCR Extraction - Extract text from each page
+        2. Page Ordering - Determine correct page order using AI (embeddings + LLM)
+        3. Physical Reordering - Physically reorder PDF pages
+        4. Optional: Save metadata for querying
+        """
         try:
-            # Step 1: OCR extraction
-            logger.info("🔍 Running document analysis...")
+            logger.info(f"🚀 Starting file processing for job_id: {job_id}")
+            # Step 1: OCR extraction - Extract text from each page
+            logger.info("🔍 Step 1: Extracting text from PDF pages...")
             ocr_result = self.ocr_agent.extract_pages(Path(file_path))
 
             if not ocr_result.get("success"):
@@ -108,185 +90,170 @@ class UploadService:
             if not pages:
                 raise ValueError("No pages found in the document")
 
-            # Filter out empty pages for processing, but keep them in the result
-            non_empty_pages = [p for p in pages if not p.get('is_empty', False)]
-            
-            if not non_empty_pages:
-                raise ValueError("Document contains no readable content (all pages are empty or could not be processed)")
+            logger.info(f"✅ Extracted text from {len(pages)} pages")
 
-            # Get text from non-empty pages
-            combined_text = " ".join([page.get("text", "") for page in non_empty_pages if page.get("text")])
-            
-            if not combined_text.strip():
-                raise ValueError("No readable text found in the document")
-
-            # Rest of your processing...
-            logger.info("🧩 Creating text chunks for reconstruction...")
-            text_chunks = self.reconstruction_agent.create_chunks_from_text(
-                text=combined_text, chunk_size=800, overlap=100
+            # Step 2: Determine correct page order using PageOrderingAgent
+            logger.info("🧠 Step 2: Determining correct page order using AI...")
+            ordering_result = self.page_ordering_agent.determine_page_order(
+                pages=pages,
+                original_pdf_path=str(file_path)
             )
-            logger.info(f"✅ Created {len(text_chunks)} text chunks")
 
-            # Convert to DocumentChunk objects
-            document_chunks = [
-                DocumentChunk(
-                    chunk_id=f"chunk_{i}",
-                    content_buffer=[chunk],
-                    source_file=str(file_path),
-                    metadata={
-                        "chunk_index": i,
-                        "original_page_numbers": [p['page_number'] for p in non_empty_pages if chunk in p.get('text', '')]
+            if not ordering_result.get("success"):
+                error_msg = ordering_result.get("error", "Failed to determine page order")
+                logger.error(f"Page ordering failed: {error_msg}")
+                raise ValueError(f"Page ordering failed: {error_msg}")
+
+            ordered_pages = ordering_result.get("ordered_pages", pages)
+            page_order = ordering_result.get("page_order", [p['page_number'] for p in pages])
+            confidence_scores = ordering_result.get("confidence_scores", [])
+            reasoning = ordering_result.get("reasoning", "Ordering completed")
+            original_order = ordering_result.get("original_order", [p['page_number'] for p in pages])
+
+            logger.info(f"✅ Page order determined: {page_order}")
+            logger.info(f"   Original order: {original_order}")
+            logger.info(f"   Reasoning: {reasoning[:200]}...")
+
+            # Step 3: Physically reorder PDF pages
+            logger.info("📄 Step 3: Physically reordering PDF pages...")
+            
+            # Convert page_order (which contains page numbers) to 1-based page numbers for PDF reordering
+            # page_order is already in the format we need (1-based page numbers in desired order)
+            reorder_result = self.pdf_agent.reorder_pdf_pages(
+                input_pdf_path=str(file_path),
+                page_order=page_order,  # List of page numbers in correct order
+                output_path=str(self.output_dir / f"{job_id}_reordered.pdf")
+            )
+
+            if not reorder_result.get("success"):
+                error_msg = reorder_result.get("error", "Failed to reorder PDF pages")
+                logger.error(f"PDF reordering failed: {error_msg}")
+                raise ValueError(f"PDF reordering failed: {error_msg}")
+
+            reordered_pdf_path = reorder_result.get("file_path")
+            logger.info(f"✅ PDF pages reordered successfully: {reordered_pdf_path}")
+
+            # Step 4: Save page metadata for querying (optional)
+            logger.info("💾 Step 4: Saving page metadata for querying...")
+            
+            # Convert numpy types to Python native types for JSON serialization
+            def convert_to_native(obj):
+                """Convert numpy types to Python native types."""
+                import numpy as np
+                if isinstance(obj, np.integer):
+                    return int(obj)
+                elif isinstance(obj, np.floating):
+                    return float(obj)
+                elif isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                elif isinstance(obj, dict):
+                    return {key: convert_to_native(value) for key, value in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_to_native(item) for item in obj]
+                return obj
+            
+            # Convert confidence_scores to Python floats
+            confidence_scores_python = [float(score) for score in confidence_scores]
+            
+            metadata = {
+                "job_id": job_id,
+                "original_file": str(file_path),
+                "reordered_file": reordered_pdf_path,
+                "original_order": original_order,
+                "reordered_order": page_order,
+                "confidence_scores": confidence_scores_python,
+                "reasoning": reasoning,
+                "pages": [
+                    {
+                        "page_number": p.get('page_number'),
+                        "original_index": p.get('original_index', p.get('page_number') - 1),
+                        "text": p.get('text', '')[:500],  # First 500 chars for preview
+                        "is_empty": p.get('is_empty', False),
+                        "confidence": float(confidence_scores_python[i]) if i < len(confidence_scores_python) else 0.5
                     }
-                )
-                for i, chunk in enumerate(text_chunks)
-            ]
+                    for i, p in enumerate(ordered_pages)
+                ]
+            }
+            
+            # Convert any remaining numpy types in metadata
+            metadata = convert_to_native(metadata)
 
-        # Rest of your processing...
-            logger.info(f"✅ Created {len(document_chunks)} document chunks for LLM reconstruction")
-
-            # Step 3: Run LLM reconstruction
-            logger.info("🧠 Running LLM reconstruction process...")
-            reconstruction_result = self.reconstruction_agent.process_document(document_chunks)
-            reconstructed_doc = reconstruction_result.get("reconstructed_doc", {})
-            chunks_out = reconstructed_doc.get("chunks", [])
-
-            logger.info(f"✅ Reconstruction complete with {len(chunks_out)} valid chunks")
-
-            # Step 4: Generate reconstructed PDF
-            logger.info("🖨️ Generating final PDF file...")
-            pdf_result = self._generate_pdf(chunks_out, job_id, pages) 
+            metadata_file_path = self.output_dir / f"{job_id}_metadata.json"
+            try:
+                import json
+                with open(metadata_file_path, 'w', encoding='utf-8') as f:
+                    json.dump(metadata, f, ensure_ascii=False, indent=2)
+                logger.info(f"✅ Saved metadata to {metadata_file_path}")
+            except Exception as e:
+                logger.error(f"Error saving metadata: {str(e)}", exc_info=True)
+                # Don't fail the whole process if we can't save metadata
 
             # Step 5: Create summary
-            summary = self._generate_summary(chunks_out)
-            
-            # Step 6: Save chunks to JSON file for querying
-            chunks_file_path = self.output_dir / f"{job_id}_chunks.json"
-            try:
-                # Convert DocumentChunk objects to serializable dictionaries
-                serializable_chunks = []
-                for chunk in chunks_out:
-                    if hasattr(chunk, 'to_dict'):  # If it's a DocumentChunk object
-                        serializable_chunks.append(chunk.to_dict())
-                    elif isinstance(chunk, dict):  # If it's already a dictionary
-                        serializable_chunks.append(chunk)
-                
-                # Save to JSON file
-                with open(chunks_file_path, 'w', encoding='utf-8') as f:
-                    import json
-                    json.dump(serializable_chunks, f, ensure_ascii=False, indent=2)
-                logger.info(f"✅ Saved {len(serializable_chunks)} chunks to {chunks_file_path}")
-            except Exception as e:
-                logger.error(f"Error saving chunks to JSON: {str(e)}", exc_info=True)
-                # Don't fail the whole process if we can't save the chunks
-
-            return {
-                "ocr_result": ocr_result,
-                "reconstruction_result": reconstruction_result,
-                "pdf_result": pdf_result,
-                "summary": summary,
-                "chunks_saved": chunks_file_path.name,
-                "chunks_count": len(chunks_out)
-            }
-
-        except Exception as e:
-            logger.error(f"Error processing file {file_path}: {str(e)}", exc_info=True)
-            raise
-
-    # ----------------------------------------------------------------
-    def _generate_pdf(self, chunks: List[Dict[str, Any]], job_id: str, all_pages: List[dict]) -> Dict[str, Any]:
-        """Generate PDF from reconstructed content, preserving empty pages."""
-        try:
-            if not chunks:
-                raise ValueError("No content available to generate PDF")
-
-            # Reconstruct the document with original page structure
-            final_pages = []
-            
-            # For now, just create one page with all content since we don't have page mapping
-            # in the reconstructed chunks
-            content_parts = []
-            
-            for chunk in chunks:
-                if isinstance(chunk, dict):
-                    # Handle dictionary chunks
-                    if 'content_buffer' in chunk and isinstance(chunk['content_buffer'], list):
-                        content = '\n'.join([str(item) for item in chunk['content_buffer'] if item])
-                        if 'heading_buffer' in chunk and chunk['heading_buffer']:
-                            content = f"{' '.join(chunk['heading_buffer'])}\n{content}"
-                        content_parts.append(content)
-            
-            if not content_parts:
-                raise ValueError("No valid content found in chunks")
-                
-            # Create a single content page with all chunks
-            final_pages.append({
-                'type': 'content',
-                'page_number': 1,
-                'title': "Reconstructed Document",
-                'content': "\n\n".join(content_parts),
-                'level': 1
-            })
-
-            # Generate PDF
-            output_path = self.output_dir / f"{job_id}_reconstructed.pdf"
-            result = self.pdf_agent.generate_pdf(
-                content=final_pages,
-                output_path=str(output_path),
-                title="Reconstructed Document"
+            summary = self._generate_page_ordering_summary(
+                original_order=original_order,
+                reordered_order=page_order,
+                confidence_scores=confidence_scores_python,
+                reasoning=reasoning
             )
-
-            if not result.get("success"):
-                raise Exception(result.get("error", "PDF generation failed"))
 
             return {
                 "success": True,
-                "file_path": str(output_path),
-                "page_count": len(final_pages),
-                "empty_pages": 0
+                "ocr_result": ocr_result,
+                "ordering_result": {
+                    "success": True,
+                    "original_order": original_order,
+                    "reordered_order": page_order,
+                    "confidence_scores": confidence_scores,
+                    "reasoning": reasoning,
+                    "average_confidence": sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
+                },
+                "pdf_result": reorder_result,
+                "summary": summary,
+                "metadata_file": metadata_file_path.name if metadata_file_path.exists() else None,
+                "reordered_pdf_filename": Path(reordered_pdf_path).name
             }
 
+        except ValueError as e:
+            # These are expected errors with clear messages
+            logger.error(f"ValueError in processing file {file_path}: {str(e)}", exc_info=True)
+            raise
         except Exception as e:
-            logger.error(f"Error generating PDF: {str(e)}", exc_info=True)
-            return {"success": False, "error": str(e)}
+            # Unexpected errors - log full traceback
+            error_msg = f"Unexpected error processing file {file_path}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            # Re-raise with more context
+            raise Exception(f"Processing failed: {str(e)}. Check server logs for details.")
 
     # ----------------------------------------------------------------
-    def _generate_summary(self, chunks: List[Dict[str, Any]]) -> str:
-        """Generate a short summary from reconstructed content."""
+    def _generate_page_ordering_summary(
+        self,
+        original_order: List[int],
+        reordered_order: List[int],
+        confidence_scores: List[float],
+        reasoning: str
+    ) -> str:
+        """Generate a summary of the page ordering process."""
         try:
-            if not chunks:
-                return "No content available for summary"
-
-            # Take the first few reconstructed sections
-            text = " ".join([" ".join(chunk.get("content_buffer", [])) for chunk in chunks[:5]])
-            if not text.strip():
-                return "No meaningful content to summarize"
-
-            # Simple rule-based summary (can later replace with LLM)
-            short_summary = text[:1500]
-            return short_summary.strip()
+            if not original_order or not reordered_order:
+                return "Page ordering completed"
+            
+            # Check if order changed
+            order_changed = original_order != reordered_order
+            
+            if not order_changed:
+                summary = "✅ Pages were already in correct order. No reordering needed."
+            else:
+                avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
+                summary = (
+                    f"✅ Pages reordered successfully.\n"
+                    f"   Original order: {original_order}\n"
+                    f"   New order: {reordered_order}\n"
+                    f"   Average confidence: {avg_confidence:.2%}\n"
+                    f"   Reasoning: {reasoning[:200]}..."
+                )
+            
+            return summary
 
         except Exception as e:
             logger.error(f"Error generating summary: {str(e)}", exc_info=True)
-            return "Summary generation failed"
-
-    def _save_uploaded_file(self, uploaded_file, job_id: str) -> Path:
-        """Save the uploaded file to the upload directory."""
-        try:
-            file_extension = os.path.splitext(uploaded_file.name)[1].lower()
-            if file_extension != '.pdf':
-                raise ValueError("Only PDF files are supported")
-                
-            filename = f"{job_id}{file_extension}"
-            file_path = self.upload_dir / filename
-            
-            # Save the file in chunks to handle large files
-            with open(file_path, 'wb+') as destination:
-                for chunk in uploaded_file.chunks():
-                    destination.write(chunk)
-                    
-            logger.info(f"File saved to {file_path}")
-            return file_path
-            
-        except Exception as e:
-            logger.error(f"Error saving file: {str(e)}", exc_info=True)
-            raise
+            return "Page ordering completed"

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union, Any
 from fpdf import FPDF
 from datetime import datetime
-from PyPDF2 import PdfMerger
+from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 
 # Add DejaVu font path (commonly available on Linux/Unix systems)
 DEJAVU_FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
@@ -294,6 +294,101 @@ class PDFAgent:
             
         except Exception as e:
             logger.error(f"Error merging PDFs: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def reorder_pdf_pages(
+        self,
+        input_pdf_path: str,
+        page_order: List[int],
+        output_path: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Reorder pages in a PDF file according to the specified order.
+        
+        Args:
+            input_pdf_path: Path to the input PDF file
+            page_order: List of page numbers (1-based) in the desired order
+                       Example: [3, 1, 2] means page 3 comes first, then page 1, then page 2
+            output_path: Path to save the reordered PDF (default: auto-generated)
+            
+        Returns:
+            Dictionary with:
+                - success: Whether reordering succeeded
+                - file_path: Path to the reordered PDF
+                - page_count: Number of pages in the reordered PDF
+                - original_order: Original page order
+                - new_order: New page order
+        """
+        try:
+            if not os.path.exists(input_pdf_path):
+                return {
+                    'success': False,
+                    'error': f'Input PDF not found: {input_pdf_path}'
+                }
+            
+            # Read the input PDF
+            reader = PdfReader(input_pdf_path)
+            total_pages = len(reader.pages)
+            
+            # Validate page order
+            if not page_order:
+                return {
+                    'success': False,
+                    'error': 'Page order is empty'
+                }
+            
+            # Validate that all page numbers are valid (1-based)
+            if not all(1 <= page_num <= total_pages for page_num in page_order):
+                return {
+                    'success': False,
+                    'error': f'Invalid page numbers in order. PDF has {total_pages} pages, but order contains pages outside this range.'
+                }
+            
+            # Validate that all pages are included
+            if len(set(page_order)) != total_pages:
+                return {
+                    'success': False,
+                    'error': f'Page order must include all {total_pages} pages exactly once'
+                }
+            
+            # Create a writer to build the reordered PDF
+            writer = PdfWriter()
+            
+            # Add pages in the specified order (convert to 0-based indexing)
+            for page_num in page_order:
+                page_index = page_num - 1  # Convert to 0-based
+                writer.add_page(reader.pages[page_index])
+            
+            # Generate output path if not provided
+            if not output_path:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                base_name = os.path.splitext(os.path.basename(input_pdf_path))[0]
+                output_path = str(self.output_dir / f"{base_name}_reordered_{timestamp}.pdf")
+            
+            # Ensure the output directory exists
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
+            # Write the reordered PDF
+            with open(output_path, 'wb') as output_file:
+                writer.write(output_file)
+            
+            logger.info(f"✅ Successfully reordered PDF: {input_pdf_path} -> {output_path}")
+            logger.info(f"   Original order: {list(range(1, total_pages + 1))}")
+            logger.info(f"   New order: {page_order}")
+            
+            return {
+                'success': True,
+                'file_path': output_path,
+                'page_count': total_pages,
+                'original_order': list(range(1, total_pages + 1)),
+                'new_order': page_order
+            }
+            
+        except Exception as e:
+            logger.error(f"Error reordering PDF pages: {str(e)}", exc_info=True)
             return {
                 'success': False,
                 'error': str(e)

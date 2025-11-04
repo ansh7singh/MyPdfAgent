@@ -42,25 +42,55 @@ class QueryService:
         try:
             # Load the processed document chunks
             processed_dir = Path(settings.MEDIA_ROOT) / "processed"
-            processed_path = processed_dir / f"{job_id}_chunks.json"
+            chunks_path = processed_dir / f"{job_id}_chunks.json"
             
-            # Debug: Print the path being checked
-            print(f"Looking for chunks at: {processed_path}")
-            print(f"Directory contents: {list(processed_dir.glob('*'))}")
-            
-            if not processed_path.exists():
+            # Try to load chunks from chunks.json file
+            if not chunks_path.exists():
+                logger.warning(f"Chunks file not found at {chunks_path}, checking for alternative formats")
                 return {
                     "success": False,
-                    "error": f"Document not found or not processed yet. Expected file: {processed_path}",
+                    "error": f"Document not found or not processed yet. Expected file: {chunks_path}",
                     "debug": {
-                        "path": str(processed_path),
-                        "exists": processed_path.exists(),
-                        "files_in_processed_dir": [str(f) for f in processed_dir.glob('*')] if processed_dir.exists() else "Directory not found"
+                        "path": str(chunks_path),
+                        "exists": chunks_path.exists(),
+                        "files_in_processed_dir": [str(f.name) for f in processed_dir.glob('*')] if processed_dir.exists() else "Directory not found"
                     }
                 }
             
-            with open(processed_path, 'r') as f:
-                chunks = json.load(f)
+            with open(chunks_path, 'r', encoding='utf-8') as f:
+                raw_chunks = json.load(f)
+            
+            # Convert chunks to the format expected by QueryAgent
+            # The chunks.json might have different formats, so we normalize them
+            chunks = []
+            for i, chunk in enumerate(raw_chunks):
+                if isinstance(chunk, dict):
+                    # Check if it's already in the correct format
+                    if 'heading_buffer' in chunk and 'content_buffer' in chunk:
+                        chunks.append(chunk)
+                    elif 'content' in chunk:
+                        # Convert from chunks.json format to reconstruction format
+                        chunks.append({
+                            'heading_buffer': [chunk.get('title', f'Page {chunk.get("page_number", i+1)}')],
+                            'content_buffer': [chunk.get('content', '')],
+                            'metadata': chunk.get('metadata', {})
+                        })
+                    elif 'text' in chunk:
+                        # Convert from OCR page format
+                        chunks.append({
+                            'heading_buffer': [f'Page {chunk.get("page_number", i+1)}'],
+                            'content_buffer': [chunk.get('text', '')],
+                            'metadata': {
+                                'page_number': chunk.get('page_number', i+1),
+                                'confidence': chunk.get('confidence', 0)
+                            }
+                        })
+            
+            if not chunks:
+                return {
+                    "success": False,
+                    "error": "No valid chunks found in the processed document"
+                }
             
             # Query the document
             result = self.query_agent.query_document(

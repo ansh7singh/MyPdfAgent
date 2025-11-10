@@ -156,50 +156,54 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen">
       {stage === "upload" && <FileUpload onUpload={handleFileUpload} />}
       {stage === "processing" && (
-        <ProcessingStatus jobResult={jobResult} logs={logs} />
+        <div className="min-h-screen bg-gray-50 p-6">
+          <ProcessingStatus jobResult={jobResult} logs={logs} />
+        </div>
       )}
       {stage === "results" && (
-        <ResultsView
-          jobResult={jobResult}
-          logs={logs}
-          onStartNew={() => {
-            setStage("upload");
-            setUploadedFile(null);
-            setLogs([]);
-            setJobResult(null);
-          }}
-          onDownload={() => {
-            // Ensure we always use the full backend URL
-            let downloadUrl = jobResult?.download_url;
-            
-            // If no download_url, construct from filename
-            if (!downloadUrl) {
-              const filename = jobResult?.reordered_pdf_filename || 
-                               jobResult?.pdf_result?.file_path?.split('/').pop() ||
-                               jobResult?.pdf_result?.file_path?.split('\\').pop();
-              if (filename) {
-                downloadUrl = `http://127.0.0.1:8000/agent/download/${filename}`;
+        <div className="min-h-screen bg-gray-50 p-6">
+          <ResultsView
+            jobResult={jobResult}
+            logs={logs}
+            onStartNew={() => {
+              setStage("upload");
+              setUploadedFile(null);
+              setLogs([]);
+              setJobResult(null);
+            }}
+            onDownload={() => {
+              // Ensure we always use the full backend URL
+              let downloadUrl = jobResult?.download_url;
+              
+              // If no download_url, construct from filename
+              if (!downloadUrl) {
+                const filename = jobResult?.reordered_pdf_filename || 
+                                 jobResult?.pdf_result?.file_path?.split('/').pop() ||
+                                 jobResult?.pdf_result?.file_path?.split('\\').pop();
+                if (filename) {
+                  downloadUrl = `http://127.0.0.1:8000/agent/download/${filename}`;
+                }
               }
-            }
-            
-            // If download_url is relative, make it absolute
-            if (downloadUrl && !downloadUrl.startsWith('http')) {
-              downloadUrl = `http://127.0.0.1:8000${downloadUrl.startsWith('/') ? '' : '/'}${downloadUrl}`;
-            }
-            
-            if (!downloadUrl) {
-              console.error('No download URL available');
-              alert('Download URL not available. Please check the server response.');
-              return;
-            }
-            
-            console.log('Downloading PDF from:', downloadUrl);
-            window.open(downloadUrl, "_blank");
-          }}
-        />
+              
+              // If download_url is relative, make it absolute
+              if (downloadUrl && !downloadUrl.startsWith('http')) {
+                downloadUrl = `http://127.0.0.1:8000${downloadUrl.startsWith('/') ? '' : '/'}${downloadUrl}`;
+              }
+              
+              if (!downloadUrl) {
+                console.error('No download URL available');
+                alert('Download URL not available. Please check the server response.');
+                return;
+              }
+              
+              console.log('Downloading PDF from:', downloadUrl);
+              window.open(downloadUrl, "_blank");
+            }}
+          />
+        </div>
       )}
     </div>
   );

@@ -122,7 +122,9 @@ class UploadService:
             reorder_result = self.pdf_agent.reorder_pdf_pages(
                 input_pdf_path=str(file_path),
                 page_order=page_order,  # List of page numbers in correct order
-                output_path=str(self.output_dir / f"{job_id}_reordered.pdf")
+                output_path=str(self.output_dir / f"{job_id}_reordered.pdf"),
+                ordered_pages=ordered_pages,  # Pass ordered pages for TOC generation
+                add_toc=True  # Enable TOC generation
             )
 
             if not reorder_result.get("success"):

@@ -100,9 +100,20 @@ class PageOrderingAgent:
                 similarity_matrix
             )
             
+            # Log original page order for debugging
+            original_page_numbers = [p['page_number'] for p in non_empty_pages]
+            logger.info(f"📋 Original page numbers in input: {original_page_numbers}")
+            logger.info(f"📋 Original indices (0-based): {list(range(len(non_empty_pages)))}")
+            
             # Step 4: Use LLM to determine logical order
             logger.info("🤖 Using LLM to determine logical page order...")
             llm_order = self._llm_determine_order(non_empty_pages, transition_scores)
+            
+            llm_order_indices = llm_order.get('order', [])
+            logger.info(f"🤖 LLM returned order (indices): {llm_order_indices}")
+            if llm_order_indices:
+                llm_page_numbers = [non_empty_pages[i]['page_number'] for i in llm_order_indices if 0 <= i < len(non_empty_pages)]
+                logger.info(f"🤖 LLM order (page numbers): {llm_page_numbers}")
             
             # Step 5: Combine embeddings and LLM results
             final_order = self._combine_ordering_results(
@@ -110,6 +121,10 @@ class PageOrderingAgent:
                 llm_order,
                 transition_scores
             )
+            
+            # Log what we got after combining
+            final_page_numbers = [p['page_number'] for p in final_order]
+            logger.info(f"📋 Final order after combining (page numbers): {final_page_numbers}")
             
             # Step 6: Reinsert empty pages at their original positions
             final_pages_with_empty = self._reinsert_empty_pages(
@@ -130,16 +145,33 @@ class PageOrderingAgent:
                 llm_order
             )
             
-            logger.info(f"✅ Page order determined: {[p['page_number'] for p in final_pages_with_empty]}")
+            # Get the actual reordered page numbers (original page numbers in new order)
+            page_order = [p['page_number'] for p in final_pages_with_empty]
+            original_order = [p['page_number'] for p in pages]
+            
+            # Log the actual reordering
+            logger.info(f"✅ Page order determined: {page_order}")
+            logger.info(f"   Original order: {original_order}")
+            
+            # Check if order actually changed
+            if page_order == original_order:
+                logger.warning("⚠️  Page order is the same as original - pages may already be in correct order, or reordering failed")
+                # Try to detect if pages are actually jumbled by checking if LLM returned different order
+                llm_order_indices = llm_order.get('order', list(range(len(non_empty_pages))))
+                if llm_order_indices != list(range(len(non_empty_pages))):
+                    logger.warning(f"   LLM suggested different order: {llm_order_indices}, but final order is unchanged")
+            else:
+                logger.info(f"   ✅ Order changed: {original_order} -> {page_order}")
             
             return {
                 'success': True,
                 'ordered_pages': final_pages_with_empty,
-                'page_order': [p['page_number'] for p in final_pages_with_empty],
+                'page_order': page_order,  # Original page numbers in new order
                 'confidence_scores': confidence_scores,
                 'reasoning': llm_order.get('reasoning', 'Ordering based on semantic similarity and LLM analysis'),
-                'original_order': [p['page_number'] for p in pages],
-                'reordered_indices': [p.get('original_index', i) for i, p in enumerate(final_pages_with_empty)]
+                'original_order': original_order,
+                'reordered_indices': [p.get('original_index', i) for i, p in enumerate(final_pages_with_empty)],
+                'llm_order_indices': llm_order.get('order', [])  # Add LLM indices for debugging
             }
             
         except Exception as e:
@@ -212,8 +244,60 @@ class PageOrderingAgent:
             if pattern_before in text_before_lower and pattern_after in text_after_lower:
                 return 0.8
         
-        # Check for numbering sequences
+        # Check for Roman numeral sequences (Article I, II, III, etc.)
         import re
+        roman_before = re.findall(r'\b(article|part|chapter)\s+([ivxlcdm]+)\b', text_before[:200], re.IGNORECASE)
+        roman_after = re.findall(r'\b(article|part|chapter)\s+([ivxlcdm]+)\b', text_after[:200], re.IGNORECASE)
+        
+        if roman_before and roman_after:
+            # Simple check: if we see Article I before and Article II after, that's good flow
+            try:
+                roman_numerals = {'i': 1, 'ii': 2, 'iii': 3, 'iv': 4, 'v': 5, 'vi': 6, 'vii': 7, 'viii': 8, 'ix': 9, 'x': 10}
+                last_roman = roman_before[-1][1].lower()
+                first_roman = roman_after[0][1].lower()
+                if last_roman in roman_numerals and first_roman in roman_numerals:
+                    if roman_numerals[first_roman] == roman_numerals[last_roman] + 1:
+                        return 0.7
+            except:
+                pass
+        
+        # Check for clause numbering sequences (i), ii), iii), etc. or 1), 2), 3), etc.
+        clause_before = re.findall(r'([ivxlcdm]+)\)|(\d+)\)', text_before[:300], re.IGNORECASE)
+        clause_after = re.findall(r'([ivxlcdm]+)\)|(\d+)\)', text_after[:300], re.IGNORECASE)
+        
+        if clause_before and clause_after:
+            try:
+                # Get the last clause number from before
+                last_clause = None
+                for match in clause_before:
+                    if match[0]:  # Roman numeral
+                        last_clause = match[0].lower()
+                    elif match[1]:  # Arabic number
+                        last_clause = int(match[1])
+                
+                # Get the first clause number from after
+                first_clause = None
+                for match in clause_after:
+                    if match[0]:  # Roman numeral
+                        first_clause = match[0].lower()
+                    elif match[1]:  # Arabic number
+                        first_clause = int(match[1])
+                
+                if last_clause and first_clause:
+                    if isinstance(last_clause, str) and isinstance(first_clause, str):
+                        # Both are Roman numerals
+                        roman_numerals = {'i': 1, 'ii': 2, 'iii': 3, 'iv': 4, 'v': 5, 'vi': 6, 'vii': 7, 'viii': 8, 'ix': 9, 'x': 10, 'xi': 11, 'xii': 12, 'xiii': 13, 'xiv': 14, 'xv': 15, 'xvi': 16, 'xvii': 17, 'xviii': 18, 'xix': 19, 'xx': 20}
+                        if last_clause in roman_numerals and first_clause in roman_numerals:
+                            if roman_numerals[first_clause] == roman_numerals[last_clause] + 1:
+                                return 0.75
+                    elif isinstance(last_clause, int) and isinstance(first_clause, int):
+                        # Both are Arabic numbers
+                        if first_clause == last_clause + 1:
+                            return 0.7
+            except:
+                pass
+        
+        # Check for numbering sequences
         numbers_before = re.findall(r'\b(\d+)\b', text_before[:100])
         numbers_after = re.findall(r'\b(\d+)\b', text_after[:100])
         
@@ -248,27 +332,61 @@ class PageOrderingAgent:
             
             # Create prompt for LLM
             prompt = (
-                "You are an AI assistant that reorders jumbled PDF pages.\n"
+                "You are an AI assistant that reorders JUMBLED PDF pages.\n"
+                "IMPORTANT: The pages below are OUT OF ORDER and need to be reordered.\n"
+                "Do NOT assume they are already in the correct order - analyze the content carefully.\n\n"
                 "Analyze the following pages and determine their correct logical order.\n"
                 "Consider:\n"
                 "- Title pages and table of contents typically come first\n"
                 "- Introduction/Executive Summary comes before main content\n"
-                "- Sections should follow a logical sequence\n"
+                "- Sections should follow a logical sequence (Article I, Article II, etc.)\n"
+                "- Sequential numbering or references indicate order\n"
                 "- Conclusion/Summary comes at the end\n"
-                "- References/Appendices come last\n\n"
-                "Pages to reorder:\n"
+                "- References/Appendices come last\n"
+                "- For loan agreements: Title page → Definitions → Terms → Conditions → Signatures\n\n"
+                "Pages to reorder (these are CURRENTLY OUT OF ORDER):\n"
             )
             
             for summary in page_summaries:
-                prompt += f"\nPage {summary['page_number']} (Index {summary['index']}):\n"
-                prompt += f"{summary['first_words']}\n"
+                text_preview = summary['summary'][:400]  # Show more text for better analysis
+                # Show first few lines to help identify content
+                lines = text_preview.split('\n')[:5]
+                content_preview = '\n'.join(lines)
+                prompt += f"\n[Index {summary['index']}] Page {summary['page_number']}:\n"
+                prompt += f"{content_preview}\n"
+                prompt += f"---\n"
             
             prompt += (
-                "\n\nIMPORTANT: You must respond with ONLY valid JSON in this exact format:\n"
+                "\n\n" + "="*80 + "\n"
+                "CRITICAL INSTRUCTIONS:\n"
+                "="*80 + "\n"
+                "These pages are DEFINITELY JUMBLED and OUT OF ORDER.\n"
+                "The PDF was scanned/merged incorrectly, so the page sequence is wrong.\n"
+                "You MUST analyze the CONTENT of each page to determine the correct order.\n\n"
+                "DO NOT assume pages are in order just because their indices are sequential.\n"
+                "DO NOT return [0, 1, 2, 3...] - that would mean no reordering is needed.\n\n"
+                "ANALYZE EACH PAGE'S CONTENT for:\n"
+                "1. Title/Header text (e.g., 'LOAN AGREEMENT', 'ARTICLE I', 'DEFINITIONS')\n"
+                "2. Section numbers or references (e.g., 'Article I' should come before 'Article II')\n"
+                "3. Sequential content (e.g., definitions before terms, terms before conditions)\n"
+                "4. Page numbers mentioned in the text itself\n"
+                "5. Logical flow (introduction → main content → conclusion)\n\n"
+                "For loan agreements, typical order is:\n"
+                "1. Title page (LOAN AGREEMENT BETWEEN...)\n"
+                "2. Definitions section\n"
+                "3. Terms and conditions\n"
+                "4. Specific clauses (Article I, II, III...)\n"
+                "5. Signatures/Appendices\n\n"
+                "You must respond with ONLY valid JSON in this exact format:\n"
                 "{\"order\": [0, 2, 1, 3], \"reasoning\": \"Explanation here\"}\n"
                 "Where 'order' is an array of page indices (0-based) in the correct sequence.\n"
-                "Example: [0, 2, 1, 3] means page 0 comes first, then page 2, then page 1, then page 3.\n"
-                "The 'order' array must contain all page indices from 0 to " + str(len(pages) - 1) + " exactly once.\n"
+                "Example: [0, 2, 1, 3] means:\n"
+                "  - First: page at index 0\n"
+                "  - Second: page at index 2\n"
+                "  - Third: page at index 1\n"
+                "  - Fourth: page at index 3\n"
+                "The 'order' array must contain ALL page indices from 0 to " + str(len(pages) - 1) + " exactly once.\n"
+                "If you return [0, 1, 2, 3...], you are saying pages are already in order - ONLY do this if you are 100% certain.\n"
                 "Do not include any text before or after the JSON object.\n"
                 "Response:\n"
             )
@@ -369,18 +487,41 @@ class PageOrderingAgent:
         """Combine LLM ordering with embedding-based scores."""
         llm_order_indices = llm_order.get('order', list(range(len(pages))))
         
+        logger.info(f"🔄 Applying LLM order: {llm_order_indices}")
+        
+        # Check if LLM returned original order (which might indicate it didn't reorder)
+        if llm_order_indices == list(range(len(pages))):
+            logger.warning("⚠️  LLM returned original order [0, 1, 2, ...] - pages may not be reordered")
+            logger.info("   Trying embedding-based ordering as alternative...")
+            # Try embedding-based ordering instead
+            embedding_order = self._create_embedding_based_order(pages, transition_scores)
+            if embedding_order != list(range(len(pages))):
+                logger.info(f"   Embedding-based order: {embedding_order}")
+                llm_order_indices = embedding_order
+            else:
+                logger.warning("   Embedding-based order also returned original order")
+        
         # Validate and create ordered pages
         ordered_pages = []
+        seen_indices = set()
         for idx in llm_order_indices:
             if 0 <= idx < len(pages):
+                if idx in seen_indices:
+                    logger.warning(f"⚠️  Duplicate index {idx} in LLM order, skipping")
+                    continue
+                seen_indices.add(idx)
                 page_copy = pages[idx].copy()
                 page_copy['original_index'] = idx
                 ordered_pages.append(page_copy)
         
-        # If LLM order is invalid, use transition scores to create a path
+        # If LLM order is invalid or incomplete, use transition scores to create a path
         if len(ordered_pages) != len(pages):
-            logger.warning("LLM order invalid, using transition scores")
+            logger.warning(f"⚠️  LLM order incomplete ({len(ordered_pages)}/{len(pages)} pages), using transition scores")
             ordered_pages = self._create_path_from_transitions(pages, transition_scores)
+        
+        # Log the final order
+        final_page_nums = [p['page_number'] for p in ordered_pages]
+        logger.info(f"✅ Final ordered page numbers: {final_page_nums}")
         
         return ordered_pages
     
@@ -455,17 +596,31 @@ class PageOrderingAgent:
         for i, page in enumerate(pages):
             text = page.get('text', '').upper()
             score = 0
-            # Title page indicators
+            # Title page indicators (strong signals)
             if 'LOAN AGREEMENT' in text and 'BETWEEN' in text:
+                score += 20
+            if 'LOAN AGREEMENT' in text:
+                score += 15
+            if 'ARTICLE' in text and ('I' in text[:100] or '1' in text[:100] or 'ONE' in text[:100]):
+                score += 12
+            if 'DEFINITIONS' in text:
                 score += 10
-            if 'ARTICLE - I' in text or 'ARTICLE - 1' in text:
-                score += 8
-            if 'DEFINITIONS' in text and 'GENERAL CONDITIONS' in text:
-                score += 7
             if text.startswith('LOAN AGREEMENT'):
-                score += 5
-            # Penalize pages with continuation markers
-            if text.startswith('-') and any(char.isdigit() for char in text[:10]):
+                score += 15
+            # Check for title-like patterns at the start
+            first_lines = text.split('\n')[:3]
+            for line in first_lines:
+                if 'AGREEMENT' in line and len(line) < 100:
+                    score += 8
+                if 'BETWEEN' in line and 'AND' in line:
+                    score += 8
+            # Penalize pages with continuation markers (likely not first page)
+            if text.startswith('-') or text.startswith('...'):
+                score -= 5
+            if 'CONTINUED' in text[:200] or 'CONTINUATION' in text[:200]:
+                score -= 3
+            # Check if page seems like a middle page (mentions previous sections)
+            if any(word in text[:200] for word in ['AS SET FORTH', 'AS PROVIDED', 'PURSUANT TO']):
                 score -= 2
             
             start_candidates.append((score, i))
@@ -506,15 +661,72 @@ class PageOrderingAgent:
         empty_pages: List[Dict],
         all_original_pages: List[Dict]
     ) -> List[Dict]:
-        """Reinsert empty pages at their original positions."""
-        # Create a mapping of original positions
+        """
+        Reinsert empty pages at their original positions relative to the reordered sequence.
+        
+        IMPORTANT: This preserves the reordered order of non-empty pages.
+        Empty pages are inserted based on their original positions relative to non-empty pages.
+        """
+        if not empty_pages:
+            # No empty pages, return ordered pages as-is
+            logger.info("No empty pages to reinsert")
+            return ordered_pages
+        
+        logger.info(f"Reinserting {len(empty_pages)} empty pages into reordered sequence")
+        
+        # Create a mapping of page numbers to their original positions
         original_positions = {p['page_number']: i for i, p in enumerate(all_original_pages)}
         
-        # Combine ordered and empty pages, maintaining relative positions
-        combined = ordered_pages + empty_pages
-        combined.sort(key=lambda p: original_positions.get(p['page_number'], 9999))
+        # Create mappings for quick lookup
+        empty_pages_map = {p['page_number']: p for p in empty_pages}
+        non_empty_page_numbers = {p['page_number'] for p in ordered_pages}
         
-        return combined
+        # CRITICAL: We must preserve the REORDERED order of non-empty pages
+        # and only insert empty pages at their original positions relative to the reordered sequence
+        
+        # Start with reordered pages in their new order
+        result = list(ordered_pages)  # This preserves the reordered sequence!
+        
+        # Now insert empty pages at their original positions relative to non-empty pages
+        # We need to find where each empty page should go in the reordered sequence
+        empty_pages_map = {p['page_number']: p for p in empty_pages}
+        
+        # For each empty page, find its position in the original order
+        # and insert it at the corresponding position in the reordered sequence
+        for empty_page in empty_pages:
+            empty_page_num = empty_page['page_number']
+            empty_original_pos = original_positions.get(empty_page_num, -1)
+            
+            if empty_original_pos < 0:
+                continue
+            
+            # Find where to insert: find the first non-empty page that came after
+            # this empty page in the original order
+            insert_position = len(result)  # Default: append at end
+            
+            for i, ordered_page in enumerate(ordered_pages):
+                ordered_page_num = ordered_page['page_number']
+                ordered_original_pos = original_positions.get(ordered_page_num, 9999)
+                
+                # If this ordered page came after the empty page originally,
+                # insert the empty page before it
+                if ordered_original_pos > empty_original_pos:
+                    # Find the position of this ordered page in result
+                    for j, page in enumerate(result):
+                        if page['page_number'] == ordered_page_num:
+                            insert_position = j
+                            break
+                    break
+            
+            # Insert the empty page at the found position
+            result.insert(insert_position, empty_page)
+            logger.debug(f"Inserted empty page {empty_page_num} at position {insert_position}")
+        
+        logger.info(f"Final result: {len(result)} pages ({len([p for p in result if p['page_number'] in non_empty_page_numbers])} non-empty + {len(empty_pages)} empty)")
+        final_page_nums = [p['page_number'] for p in result]
+        logger.info(f"Final page order: {final_page_nums}")
+        
+        return result
     
     def _calculate_confidence_scores(
         self,

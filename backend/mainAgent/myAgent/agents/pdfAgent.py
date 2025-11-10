@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Tuple, Union, Any
 from fpdf import FPDF
 from datetime import datetime
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
+import tempfile
 
 # Add DejaVu font path (commonly available on Linux/Unix systems)
 DEJAVU_FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
@@ -299,11 +300,124 @@ class PDFAgent:
                 'error': str(e)
             }
     
+    def _detect_headings(self, pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Detect headings and sections from ordered pages to generate TOC.
+        
+        Args:
+            pages: List of page dictionaries with 'text' and 'page_number'
+            
+        Returns:
+            List of TOC entries with title, level, and page number
+        """
+        toc_entries = []
+        heading_patterns = [
+            # Level 1: Main titles (LOAN AGREEMENT, ARTICLE I, etc.)
+            (r'^(?:LOAN AGREEMENT|ARTICLE\s+[IVXLCDM]+|PART\s+[IVXLCDM]+|CHAPTER\s+\d+|SECTION\s+\d+)[\s:\.]*(.+)?$', 1),
+            # Level 2: Major sections (DEFINITIONS, TERMS AND CONDITIONS, etc.)
+            (r'^(?:DEFINITIONS|TERMS|CONDITIONS|GENERAL|SPECIFIC|APPENDIX|SCHEDULE)[\s:\.]*(.+)?$', 1),
+            (r'^([A-Z][A-Z\s]{3,50}?)[\s:\.]+$', 2),  # All caps headings
+            # Level 3: Subsections (numbered items)
+            (r'^\d+[\.\)]\s+([A-Z][^\n]{5,80})$', 3),
+            (r'^[a-z]\)\s+([A-Z][^\n]{5,80})$', 3),
+        ]
+        
+        for idx, page in enumerate(pages):
+            text = page.get('text', '')
+            # Use position in reordered PDF (1-based), not original page number
+            page_position = idx + 1
+            
+            if not text:
+                continue
+                
+            lines = text.split('\n')
+            for line in lines[:20]:  # Check first 20 lines of each page
+                line = line.strip()
+                if len(line) < 5 or len(line) > 100:
+                    continue
+                    
+                # Check each pattern
+                for pattern, level in heading_patterns:
+                    match = re.match(pattern, line, re.IGNORECASE)
+                    if match:
+                        title = match.group(1).strip() if match.groups() and match.group(1) else line.strip()
+                        # Clean up title
+                        title = re.sub(r'\s+', ' ', title)
+                        if len(title) > 80:
+                            title = title[:77] + '...'
+                        
+                        # Avoid duplicates
+                        if not any(entry['title'].lower() == title.lower() and entry['page'] == page_position 
+                                  for entry in toc_entries):
+                            toc_entries.append({
+                                'title': title,
+                                'level': level,
+                                'page': page_position  # Position in reordered PDF
+                            })
+                        break
+        
+        return toc_entries
+    
+    def _create_toc_pdf(self, toc_entries: List[Dict[str, Any]], output_path: str) -> bool:
+        """
+        Create a PDF page with table of contents.
+        
+        Args:
+            toc_entries: List of TOC entries
+            output_path: Path to save the TOC PDF
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            pdf = FPDF()
+            pdf.set_auto_page_break(auto=True, margin=15)
+            pdf.add_page()
+            
+            # Title
+            self._set_font(pdf, 'title')
+            pdf.cell(0, 20, 'Table of Contents', 0, 1, 'C')
+            pdf.ln(10)
+            
+            # TOC entries
+            self._set_font(pdf, 'normal')
+            for entry in toc_entries:
+                title = self._clean_text(entry.get('title', 'Untitled'))
+                page_num = entry.get('page', 1)
+                level = entry.get('level', 1)
+                
+                # Adjust page number: TOC is page 1, so content pages start at page 2
+                # The page_num from entry is the position in reordered content (1-based)
+                # We need to add 1 because TOC page comes before it
+                adjusted_page_num = page_num + 1
+                
+                # Indentation based on level
+                indent = (level - 1) * 10
+                pdf.set_x(10 + indent)
+                
+                # Title
+                title_width = 160 - indent
+                pdf.cell(title_width, 8, title, 0, 0, 'L')
+                
+                # Page number
+                pdf.set_x(170)
+                pdf.cell(20, 8, str(adjusted_page_num), 0, 1, 'R')
+                pdf.ln(2)
+            
+            # Save
+            pdf.output(output_path)
+            return True
+        except Exception as e:
+            logger.error(f"Error creating TOC PDF: {e}", exc_info=True)
+            return False
+    
     def reorder_pdf_pages(
         self,
         input_pdf_path: str,
         page_order: List[int],
-        output_path: Optional[str] = None
+        output_path: Optional[str] = None,
+        ordered_pages: Optional[List[Dict[str, Any]]] = None,
+        add_toc: bool = True
     ) -> Dict[str, Any]:
         """
         Reorder pages in a PDF file according to the specified order.
@@ -313,6 +427,8 @@ class PDFAgent:
             page_order: List of page numbers (1-based) in the desired order
                        Example: [3, 1, 2] means page 3 comes first, then page 1, then page 2
             output_path: Path to save the reordered PDF (default: auto-generated)
+            ordered_pages: Optional list of page dictionaries with text for TOC generation
+            add_toc: Whether to add a table of contents page
             
         Returns:
             Dictionary with:
@@ -321,6 +437,7 @@ class PDFAgent:
                 - page_count: Number of pages in the reordered PDF
                 - original_order: Original page order
                 - new_order: New page order
+                - toc_entries: List of TOC entries if TOC was generated
         """
         try:
             if not os.path.exists(input_pdf_path):
@@ -371,9 +488,50 @@ class PDFAgent:
             # Ensure the output directory exists
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            # Write the reordered PDF
-            with open(output_path, 'wb') as output_file:
+            # Write the reordered PDF temporarily
+            temp_output = output_path + '.temp'
+            with open(temp_output, 'wb') as output_file:
                 writer.write(output_file)
+            
+            # Generate and add TOC if requested and ordered_pages provided
+            toc_entries = []
+            if add_toc and ordered_pages:
+                try:
+                    logger.info("📑 Generating table of contents...")
+                    toc_entries = self._detect_headings(ordered_pages)
+                    
+                    if toc_entries:
+                        # Create TOC PDF page
+                        toc_pdf_path = temp_output + '_toc.pdf'
+                        if self._create_toc_pdf(toc_entries, toc_pdf_path):
+                            # Merge TOC page with reordered PDF
+                            merger = PdfMerger()
+                            merger.append(toc_pdf_path)  # TOC first
+                            merger.append(temp_output)    # Then reordered pages
+                            merger.write(output_path)
+                            merger.close()
+                            
+                            # Clean up temp files
+                            os.remove(temp_output)
+                            os.remove(toc_pdf_path)
+                            
+                            logger.info(f"✅ Added TOC with {len(toc_entries)} entries")
+                        else:
+                            # TOC generation failed, use reordered PDF without TOC
+                            os.rename(temp_output, output_path)
+                            logger.warning("⚠️  TOC generation failed, proceeding without TOC")
+                    else:
+                        # No headings detected, use reordered PDF without TOC
+                        os.rename(temp_output, output_path)
+                        logger.info("ℹ️  No headings detected, proceeding without TOC")
+                except Exception as e:
+                    logger.warning(f"⚠️  Error adding TOC: {e}, proceeding without TOC")
+                    # Use reordered PDF without TOC
+                    if os.path.exists(temp_output):
+                        os.rename(temp_output, output_path)
+            else:
+                # No TOC requested, just rename temp file
+                os.rename(temp_output, output_path)
             
             logger.info(f"✅ Successfully reordered PDF: {input_pdf_path} -> {output_path}")
             logger.info(f"   Original order: {list(range(1, total_pages + 1))}")
@@ -382,9 +540,10 @@ class PDFAgent:
             return {
                 'success': True,
                 'file_path': output_path,
-                'page_count': total_pages,
+                'page_count': total_pages + (1 if toc_entries else 0),  # +1 for TOC page
                 'original_order': list(range(1, total_pages + 1)),
-                'new_order': page_order
+                'new_order': page_order,
+                'toc_entries': toc_entries if toc_entries else None
             }
             
         except Exception as e:
